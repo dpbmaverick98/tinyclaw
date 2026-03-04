@@ -174,7 +174,8 @@ start_daemon() {
     local whatsapp_pane=-1
     for ch in "${ACTIVE_CHANNELS[@]}"; do
         [ "$ch" = "whatsapp" ] && whatsapp_pane=$pane_idx
-        tmux send-keys -t "$TMUX_SESSION:${win_base}.$pane_idx" "cd '$SCRIPT_DIR' && node $(channel_script "$ch")" C-m
+        # Pass NATS environment variables to channel clients
+        tmux send-keys -t "$TMUX_SESSION:${win_base}.$pane_idx" "export NATS_URL='${NATS_URL}' NATS_STREAM_PREFIX='${NATS_STREAM_PREFIX}' && cd '$SCRIPT_DIR' && node $(channel_script "$ch")" C-m
         tmux select-pane -t "$TMUX_SESSION:${win_base}.$pane_idx" -T "$(channel_display "$ch")"
         pane_idx=$((pane_idx + 1))
     done
