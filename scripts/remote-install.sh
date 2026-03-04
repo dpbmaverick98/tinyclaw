@@ -179,10 +179,10 @@ if [ "$USE_BUNDLE" = false ]; then
     echo -e "${GREEN}✓ Dependencies installed${NC}"
     echo ""
 else
-    echo -e "${BLUE}[5/6] Rebuilding native modules for your Node.js version...${NC}"
+    echo -e "${BLUE}[5/6] Checking dependencies...${NC}"
     cd "$INSTALL_DIR"
-    npm rebuild better-sqlite3 --silent 2>/dev/null || true
-    echo -e "${GREEN}✓ Native modules rebuilt${NC}"
+    npm install --silent 2>/dev/null || true
+    echo -e "${GREEN}✓ Dependencies checked${NC}"
     echo ""
 fi
 
