@@ -74,7 +74,13 @@ export function decrementPending(conv: Conversation): boolean {
 
 /**
  * Enqueue an internal (agent-to-agent) message via NATS.
- * Note: This is a compatibility wrapper - agent-consumer now handles this directly.
+ * 
+ * DEPRECATED: This function is kept for backward compatibility with old code.
+ * The new NATS-based architecture handles internal messages directly in
+ * agent-consumer.ts via enqueueInternalMessage from ../nats/publisher.
+ * 
+ * If you see this log message, code is using the deprecated import path.
+ * Update imports to use ../nats/publisher instead.
  */
 export function enqueueInternalMessage(
     conversationId: string,
@@ -83,9 +89,8 @@ export function enqueueInternalMessage(
     message: string,
     originalData: { channel: string; sender: string; senderId?: string | null; messageId: string }
 ): void {
-    // This function is kept for compatibility but the actual enqueue
-    // now happens in agent-consumer.ts via NATS
-    log('INFO', `Internal message requested: @${fromAgent} → @${targetAgent} (handled by NATS)`);
+    log('WARN', `DEPRECATED: enqueueInternalMessage called from lib/conversation. Use nats/publisher instead.`);
+    log('INFO', `Internal message: @${fromAgent} → @${targetAgent} (not enqueued - use nats/publisher)`);
 }
 
 /**
