@@ -73,7 +73,7 @@ export async function startAgentWorker(agentId: string): Promise<void> {
   // Process messages forever
   for await (const msg of messages) {
     try {
-      await processMessage(msg.data, agentId, agent, agents, teams, settings, js, prefix);
+      await processMessage(msg.data, agentId, agent, agents, teams, settings, js);
       msg.ack();
     } catch (err) {
       log('ERROR', `[${agentId}] Processing failed: ${(err as Error).message}`);
@@ -95,8 +95,7 @@ async function processMessage(
   agents: Record<string, any>,
   teams: Record<string, any>,
   settings: any,
-  js: any,
-  prefix: string
+  js: any
 ): Promise<void> {
   const msg = jc.decode(data) as AgentMessage;
   const workspacePath = settings?.workspace?.path || require('os').homedir();
@@ -145,9 +144,9 @@ async function processMessage(
     for (const mention of mentions) {
       log('INFO', `[${agentId}] Handoff to ${mention.teammateId}`);
 
-      const updatedHistory = [
+      const updatedHistory: AgentMessage['history'] = [
         ...msg.history,
-        { role: 'agent', agentId, content: response, timestamp: Date.now() }
+        { role: 'agent' as const, agentId, content: response, timestamp: Date.now() }
       ];
 
       const handoffMsg: AgentMessage = {

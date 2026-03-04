@@ -4,7 +4,7 @@ import { Conversation } from './types';
 import { CHATS_DIR, getSettings, getAgents } from './config';
 import { log, emitEvent } from './logging';
 import { handleLongResponse, collectFiles } from './response';
-import { enqueueInternalMessage as natsEnqueueInternalMessage, publishResponse as natsPublishResponse } from '../nats/publisher';
+import { publishResponse as natsPublishResponse } from '../nats/publisher';
 
 // Active conversations — tracks in-flight team message passing
 export const conversations = new Map<string, Conversation>();

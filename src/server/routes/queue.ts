@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { log } from '../../lib/logging';
 import { getNATS } from '../../nats/connection';
-import { getStreamPrefix } from '../../nats/streams';
+import { STREAM_PREFIX } from '../../nats/index';
 
 /**
  * Create queue routes with NATS backend
@@ -21,14 +21,13 @@ export function createQueueRoutes() {
     app.get('/api/queue/status', async (c) => {
         try {
             const { jsm } = getNATS();
-            const prefix = getStreamPrefix();
 
             // Get consumer info for all agents
             let pending = 0;
             let processing = 0;
 
             try {
-                const consumers = await jsm.consumers.list(`${prefix}_MESSAGES`);
+                const consumers = await jsm.consumers.list(`${STREAM_PREFIX}_MESSAGES`);
                 for await (const consumer of consumers) {
                     pending += consumer.num_pending;
                     processing += consumer.num_ack_pending;
