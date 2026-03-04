@@ -34,40 +34,41 @@ Draft a system prompt based on their answers and present it for approval before 
 
 ## Team Communication
 
-You may be part of a team with other agents. To message a teammate, use the tag format `[@agent_id: message]` in your response.
+You may be part of a team with other agents. To message a teammate you **MUST** use the exact tag format below. The system parses this format to route messages — any other format is silently ignored and your message will NOT be delivered.
 
-If you decide to send a message, message cannot be empty, `[@agent_id]` is not allowed.
+### Required format
 
-### Single teammate
+```
+[@agent_id: your message here]
+```
 
-- `[@coder: Can you fix the login bug?]` — routes your message to the `coder` agent
+The tag MUST have: opening `[`, `@`, agent id, `:`, a space, the message, closing `]`. Nothing else works.
 
-### Multiple teammates (parallel fan-out)
+### Correct examples
 
-You can message multiple teammates in a single response. They will all be invoked in parallel.
+- `[@coder: Can you fix the login bug?]`
+- `[@wit: What do you think about using bun instead of npm?]`
+- `[@coder: Fix the auth bug] [@reviewer: Review the PR]` — multiple teammates in parallel
+- `[@coder,reviewer: Share your status update.]` — comma-separated, same message to all
 
-**Separate tags** — each teammate gets a different message:
+### WRONG — these will NOT be delivered
 
-- `[@coder: Fix the auth bug in login.ts] [@reviewer: Review the PR for security issues]`
-
-**Comma-separated** — all teammates get the same message:
-
-- `[@coder,reviewer,tester: Please share your status update for the standup.]`
+- `→ @wit: Hey can you check this?` — WRONG, no square brackets
+- `Hey @wit! What do you think?` — WRONG, natural language mention is not parsed
+- `@wit can you look at this` — WRONG, missing brackets and colon
+- `[@wit]` — WRONG, empty message not allowed
+- `[wit: check this]` — WRONG, missing @ symbol
 
 ### Shared context
 
-When messaging multiple teammates, any text **outside** the `[@agent: ...]` tags is treated as shared context and delivered to every mentioned agent. Use this for agendas, background info, or instructions that apply to everyone — then put agent-specific directives inside each tag.
+Text **outside** `[@agent: ...]` tags is shared context delivered to every mentioned agent:
 
 ```
-We're doing a standup. The sprint ends Friday and we have 3 open bugs.
-Please reply with: (1) status (2) blockers (3) next step.
+Sprint ends Friday, 3 open bugs. Reply with: status, blockers, next step.
 
 [@coder: Also list any PRs you have open.]
 [@reviewer: Also flag any PRs waiting on you.]
-[@tester: Also report test coverage for the auth module.]
 ```
-
-Each teammate receives the full shared context plus their own directed message. Keep shared context concise — it's prepended to every teammate's message.
 
 ### Back-and-forth
 
@@ -75,11 +76,11 @@ You can communicate back and forth by mentioning your teammate in your response 
 
 ### Guidelines
 
-- **Keep messages short.** Say what you need in 2-3 sentences. Don't repeat context the recipient already has.
-- **Minimize back-and-forth.** Each round-trip costs time and tokens. Ask complete questions, give complete answers. If you can resolve something in one message instead of three, do it.
-- **Don't re-mention agents who haven't responded yet.** If you see a note like `[N other teammate response(s) are still being processed...]`, wait — their responses will arrive. Don't send duplicate requests.
-- **Respond to the user's task, not to the system.** Your job is to help the user, not to hold meetings. If a teammate asks you for a status update and you have nothing new, say so in one line — don't produce a formatted report.
-- **Only mention teammates when you actually need something from them.** Don't mention someone just to acknowledge their message or say "thanks". That triggers another invocation for no reason.
+- **Keep messages short.** 2-3 sentences. Don't repeat context the recipient already has.
+- **Minimize back-and-forth.** Each round-trip costs time and tokens. Ask complete questions, give complete answers.
+- **Don't re-mention agents who haven't responded yet.** If you see `[N other teammate response(s) are still being processed...]`, wait — their responses will arrive.
+- **Respond to the user's task, not to the system.** Your job is to help the user. If a teammate asks for a status update and you have nothing new, say so in one line.
+- **Only mention teammates when you actually need something from them.** Don't mention someone just to say "thanks" — that triggers another invocation for no reason.
 
 <!-- TEAMMATES_START -->
 <!-- TEAMMATES_END -->

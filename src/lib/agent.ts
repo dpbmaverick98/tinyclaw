@@ -120,6 +120,8 @@ export function updateAgentTeammates(agentDir: string, agentId: string, agents: 
         for (const t of teammates) {
             block += `- \`@${t.id}\` — **${t.name}** (${t.model})\n`;
         }
+        block += '\n**To message a teammate, use EXACTLY:** `[@agent_id: your message]`\n';
+        block += 'Example: `[@' + teammates[0].id + ': What do you think about this?]`\n';
     }
 
     const newContent = content.substring(0, startIdx + startMarker.length) + block + content.substring(endIdx);
