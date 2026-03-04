@@ -174,7 +174,6 @@ export function completeConversation(conv: Conversation): void {
         agentId: conv.responses[conv.responses.length - 1]?.agentId || 'unknown',
         channel: conv.channel,
         sender: conv.sender,
-        senderId: conv.senderId,
         files: allFiles.length > 0 ? allFiles : undefined,
     });
 
