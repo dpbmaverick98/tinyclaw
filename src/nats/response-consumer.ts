@@ -13,54 +13,56 @@ import { DeliverPolicy, AckPolicy } from 'nats';
 
 const jc = getJSONCodec();
 
-// Track active consumers
-const activeConsumers = new Map<string, AbortController>();
+// Track active consumers (store the consume iterator so we can close it)
+const activeConsumers = new Map<string, { close: () => void }>();
 
 /**
  * Start a consumer for a channel's responses
  *
  * @param channel - Channel name (telegram, discord, whatsapp, api)
  * @param onResponse - Callback when response received
- * @returns Consumer instance
+ * @returns Promise that resolves when consumer stops
  */
 export async function startResponseConsumer(
   channel: string,
   onResponse: (response: ResponseMessage) => Promise<void>
 ): Promise<void> {
-  const { js } = getNATS();
+  const { js, jsm } = getNATS();
   const prefix = getStreamPrefix();
+  const streamName = `${prefix}_RESPONSES`;
   const subject = `${prefix}.responses.${channel}`;
   const durableName = `responses-${channel}`;
 
   // Stop existing consumer if any
   stopResponseConsumer(channel);
 
-  // Create abort controller for this consumer
-  const controller = new AbortController();
-  activeConsumers.set(channel, controller);
-
   log('INFO', `Starting response consumer for ${channel} on ${subject}`);
 
+  // Create durable pull consumer (no deliver_subject = pull, not push)
   try {
-    const sub = await js.subscribe(subject, {
-      config: {
-        durable_name: durableName,
-        deliver_policy: DeliverPolicy.All,
-        ack_policy: AckPolicy.Explicit,
-        max_ack_pending: 10, // Allow some parallelism for responses
-        ack_wait: 30 * 1000 * 1000000, // 30 seconds
-      },
+    await jsm.consumers.add(streamName, {
+      durable_name: durableName,
+      deliver_policy: DeliverPolicy.All,
+      ack_policy: AckPolicy.Explicit,
+      max_ack_pending: 10,
+      ack_wait: 30 * 1000 * 1000000, // 30 seconds in nanoseconds
+      filter_subject: subject,
     });
+  } catch (err) {
+    const msg = (err as Error).message || '';
+    if (!msg.includes('consumer already exists')) throw err;
+  }
 
-    log('INFO', `Response consumer for ${channel} started`);
+  const consumer = await js.consumers.get(streamName, durableName);
+  const messages = await consumer.consume();
 
-    // Process responses until aborted
-    for await (const msg of sub) {
-      // Check if aborted
-      if (controller.signal.aborted) {
-        break;
-      }
+  // Store reference so stopResponseConsumer can close it
+  activeConsumers.set(channel, messages);
 
+  log('INFO', `Response consumer for ${channel} started`);
+
+  try {
+    for await (const msg of messages) {
       try {
         const response = jc.decode(msg.data) as ResponseMessage;
         log('INFO', `[${channel}] Delivering response to ${response.sender}`);
@@ -81,9 +83,9 @@ export async function startResponseConsumer(
  * Stop a response consumer
  */
 export function stopResponseConsumer(channel: string): void {
-  const controller = activeConsumers.get(channel);
-  if (controller) {
-    controller.abort();
+  const messages = activeConsumers.get(channel);
+  if (messages) {
+    messages.close();
     activeConsumers.delete(channel);
     log('INFO', `Stopped response consumer for ${channel}`);
   }
@@ -92,8 +94,7 @@ export function stopResponseConsumer(channel: string): void {
 /**
  * Get recent responses for a channel (for polling fallback)
  *
- * This allows channel clients to poll if they don't want to use
- * the consumer directly.
+ * Uses an ordered (ephemeral) pull consumer to read the last N messages.
  */
 export async function getRecentResponses(
   channel: string,
@@ -101,41 +102,25 @@ export async function getRecentResponses(
 ): Promise<ResponseMessage[]> {
   const { js } = getNATS();
   const prefix = getStreamPrefix();
+  const streamName = `${prefix}_RESPONSES`;
 
   const responses: ResponseMessage[] = [];
-  let sub: Awaited<ReturnType<typeof js.subscribe>> | null = null;
 
   try {
-    // Create ephemeral consumer to read from start
-    // Using All policy and breaking after limit messages
-    sub = await js.subscribe(`${prefix}.responses.${channel}`, {
-      config: {
-        deliver_policy: DeliverPolicy.All,
-        ack_policy: AckPolicy.None, // Don't ack, just read
-      },
+    // Ordered consumer = ephemeral, auto-managed, no ack needed
+    const consumer = await js.consumers.get(streamName, {
+      filterSubjects: [`${prefix}.responses.${channel}`],
+      deliver_policy: DeliverPolicy.All,
     });
 
-    // Collect up to limit messages with timeout
-    const timeoutMs = 1000;
-    const startTime = Date.now();
+    const messages = await consumer.fetch({ max_messages: limit, expires: 1000 });
 
-    for await (const msg of sub) {
+    for await (const msg of messages) {
       responses.push(jc.decode(msg.data) as ResponseMessage);
-
-      // Stop after collecting enough or timeout
-      if (responses.length >= limit || Date.now() - startTime > timeoutMs) {
-        break;
-      }
     }
   } catch (err) {
     log('ERROR', `Failed to get recent responses: ${(err as Error).message}`);
-  } finally {
-    // Always unsubscribe to avoid leaking subscriptions on break
-    if (sub) {
-      try { sub.unsubscribe(); } catch { /* ignore */ }
-    }
   }
 
-  // Return last 'limit' responses, oldest first
   return responses.slice(-limit);
 }

@@ -27,44 +27,51 @@ const jc = getJSONCodec();
 
 /**
  * Start a durable consumer for an agent
- * 
+ *
  * @param agentId - The agent ID to consume for
  * @returns Promise that resolves when consumer stops (shouldn't happen in normal operation)
  */
 export async function startAgentConsumer(agentId: string): Promise<void> {
-  const { js } = getNATS();
+  const { js, jsm } = getNATS();
   const prefix = getStreamPrefix();
   const settings = getSettings();
   const agents = getAgents(settings);
   const teams = getTeams(settings);
   const agent = agents[agentId];
-  
+
   if (!agent) {
     throw new Error(`Agent ${agentId} not found`);
   }
-  
+
+  const streamName = `${prefix}_MESSAGES`;
   const subject = `${prefix}.messages.${agentId}`;
   const durableName = `agent-${agentId}`;
-  
+
   log('INFO', `Starting consumer for agent ${agentId} on ${subject}`);
-  
-  // Create durable consumer
+
+  // Create durable pull consumer (no deliver_subject = pull, not push)
   // max_ack_pending: 1 ensures only one message processed at a time per agent
-  // This eliminates race conditions without explicit locks
-  const sub = await js.subscribe(subject, {
-    config: {
+  try {
+    await jsm.consumers.add(streamName, {
       durable_name: durableName,
       deliver_policy: DeliverPolicy.All,
       ack_policy: AckPolicy.Explicit,
       max_ack_pending: 1,
       ack_wait: 10 * 60 * 1000 * 1000000, // 10 min in nanoseconds
-    },
-  });
-  
+      filter_subject: subject,
+    });
+  } catch (err) {
+    const msg = (err as Error).message || '';
+    if (!msg.includes('consumer already exists')) throw err;
+  }
+
+  const consumer = await js.consumers.get(streamName, durableName);
+  const messages = await consumer.consume();
+
   log('INFO', `Agent ${agentId} consumer started (durable: ${durableName})`);
-  
+
   // Process messages forever
-  for await (const msg of sub) {
+  for await (const msg of messages) {
     try {
       await processAgentMessage(msg.data, agentId, agents, teams, settings);
       msg.ack();
