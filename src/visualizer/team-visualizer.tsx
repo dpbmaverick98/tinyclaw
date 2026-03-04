@@ -3,7 +3,7 @@
  * Team Visualizer — Real-time TUI for watching team conversations.
  *
  * Connects to the API server's SSE endpoint for live events and
- * polls SQLite for queue depth stats.  Renders a live dashboard with
+ * polls API for queue depth stats.  Renders a live dashboard with
  * Ink (React for CLI).
  *
  * Usage:  node dist/team-visualizer.js [--team <id>] [--port <num>]
@@ -12,7 +12,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { render, Box, Text, useApp, useInput } from 'ink';
 import http from 'http';
-import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -25,21 +24,7 @@ const _localTinyclaw = path.join(__dirname_, '..', '..', '.tinyclaw');
 const TINYCLAW_HOME = fs.existsSync(path.join(_localTinyclaw, 'settings.json'))
     ? _localTinyclaw
     : path.join(os.homedir(), '.tinyclaw');
-const QUEUE_DB_PATH = path.join(TINYCLAW_HOME, 'tinyclaw.db');
 const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
-
-// ─── SQLite helper ──────────────────────────────────────────────────────────
-
-function openDb(): Database.Database | null {
-    try {
-        if (!fs.existsSync(QUEUE_DB_PATH)) return null;
-        const db = new Database(QUEUE_DB_PATH, { readonly: true });
-        db.pragma('journal_mode = WAL');
-        return db;
-    } catch {
-        return null;
-    }
-}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -509,30 +494,29 @@ function App({ filterTeamId, apiPort }: { filterTeamId: string | null; apiPort: 
         };
     }, [handleEvent, apiPort]);
 
-    // Poll queue depth + dead count from SQLite
+    // Poll queue depth from API
     useEffect(() => {
         const pollTimer = setInterval(() => {
-            const db = openDb();
-            if (!db) return;
-            try {
-                const pending = db.prepare(
-                    "SELECT COUNT(*) as cnt FROM messages WHERE status = 'pending'"
-                ).get() as { cnt: number };
-                setQueueDepth(pending.cnt);
-
-                const dead = db.prepare(
-                    "SELECT COUNT(*) as cnt FROM messages WHERE status = 'dead'"
-                ).get() as { cnt: number };
-                setDeadCount(dead.cnt);
-            } catch {
+            http.get(`http://localhost:${apiPort}/api/queue/status`, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const status = JSON.parse(data);
+                        setQueueDepth(status.incoming + status.processing);
+                        setDeadCount(status.dead || 0);
+                    } catch {
+                        setQueueDepth(0);
+                        setDeadCount(0);
+                    }
+                });
+            }).on('error', () => {
                 setQueueDepth(0);
                 setDeadCount(0);
-            } finally {
-                try { db.close(); } catch { /* ignore */ }
-            }
+            });
         }, 1000);
         return () => clearInterval(pollTimer);
-    }, []);
+    }, [apiPort]);
 
 
     // Determine current team info
