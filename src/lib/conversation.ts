@@ -96,7 +96,7 @@ export function enqueueInternalMessage(
 /**
  * Complete a conversation: aggregate responses, write to outgoing queue, save chat history.
  */
-export function completeConversation(conv: Conversation): void {
+export async function completeConversation(conv: Conversation): Promise<void> {
     const settings = getSettings();
     const agents = getAgents(settings);
 
@@ -172,7 +172,7 @@ export function completeConversation(conv: Conversation): void {
     const { message: responseMessage, files: allFiles } = handleLongResponse(finalResponse, outboundFiles);
 
     // Publish response via NATS
-    natsPublishResponse(conv.id, {
+    await natsPublishResponse(conv.id, {
         conversationId: conv.id,
         response: responseMessage,
         history: conv.responses.map(r => ({ role: 'agent' as const, agentId: r.agentId, content: r.response, timestamp: Date.now() })),

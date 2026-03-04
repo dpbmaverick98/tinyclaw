@@ -237,7 +237,7 @@ async function processAgentMessage(
  */
 function buildPrompt(history: Message[], currentContent: string): string {
   const lines: string[] = [];
-  
+
   for (const msg of history) {
     if (msg.role === 'user') {
       lines.push(`User: ${msg.content}`);
@@ -245,8 +245,14 @@ function buildPrompt(history: Message[], currentContent: string): string {
       lines.push(`${msg.agentId}: ${msg.content}`);
     }
   }
-  
-  lines.push(`User: ${currentContent}`);
+
+  // Only append currentContent if it isn't already the last user message in history
+  // (avoids duplication for initial messages where history[0].content === currentContent)
+  const lastMsg = history[history.length - 1];
+  if (!lastMsg || lastMsg.role !== 'user' || lastMsg.content !== currentContent) {
+    lines.push(`User: ${currentContent}`);
+  }
+
   return lines.join('\n\n');
 }
 

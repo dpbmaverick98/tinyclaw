@@ -103,11 +103,12 @@ export async function getRecentResponses(
   const prefix = getStreamPrefix();
 
   const responses: ResponseMessage[] = [];
+  let sub: Awaited<ReturnType<typeof js.subscribe>> | null = null;
 
   try {
     // Create ephemeral consumer to read from start
     // Using All policy and breaking after limit messages
-    const sub = await js.subscribe(`${prefix}.responses.${channel}`, {
+    sub = await js.subscribe(`${prefix}.responses.${channel}`, {
       config: {
         deliver_policy: DeliverPolicy.All,
         ack_policy: AckPolicy.None, // Don't ack, just read
@@ -128,6 +129,11 @@ export async function getRecentResponses(
     }
   } catch (err) {
     log('ERROR', `Failed to get recent responses: ${(err as Error).message}`);
+  } finally {
+    // Always unsubscribe to avoid leaking subscriptions on break
+    if (sub) {
+      try { sub.unsubscribe(); } catch { /* ignore */ }
+    }
   }
 
   // Return last 'limit' responses, oldest first
