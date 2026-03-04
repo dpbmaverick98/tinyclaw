@@ -61,27 +61,28 @@ export function createQueueRoutes() {
     // GET /api/responses - Get recent responses
     app.get('/api/responses', async (c) => {
         const limit = parseInt(c.req.query('limit') || '20', 10);
-        
+
         // Get from all channels
         const allResponses: any[] = [];
         const channels = ['telegram', 'discord', 'whatsapp', 'api'];
-        
+
         for (const channel of channels) {
             const responses = await getRecentResponses(channel, limit);
             allResponses.push(...responses.map(r => ({
+                id: r.conversationId ? parseInt(r.conversationId.split('_')[1] || '0') : 0,
                 channel: r.channel,
                 sender: r.sender,
                 senderId: r.senderId,
                 message: r.response,
-                originalMessage: '', // Not stored in NATS message
-                timestamp: Date.now(), // Would need to parse from history
+                originalMessage: r.originalMessage || '',
+                timestamp: r.createdAt || Date.now(),
                 messageId: r.conversationId,
                 agent: r.agentId,
                 files: r.files,
                 metadata: r.metadata,
             })));
         }
-        
+
         // Sort by timestamp (newest first) and limit
         allResponses.sort((a, b) => b.timestamp - a.timestamp);
         return c.json(allResponses.slice(0, limit));
@@ -91,17 +92,18 @@ export function createQueueRoutes() {
     app.get('/api/responses/pending', async (c) => {
         const channel = c.req.query('channel');
         if (!channel) return c.json({ error: 'channel query param required' }, 400);
-        
+
         // Get recent responses for this channel
         const responses = await getRecentResponses(channel, 50);
-        
+
         return c.json(responses.map(r => ({
-            id: r.conversationId, // Use conversation ID as response ID
+            id: r.conversationId ? parseInt(r.conversationId.split('_')[1] || '0') : 0,
             channel: r.channel,
             sender: r.sender,
             senderId: r.senderId,
             message: r.response,
-            originalMessage: '',
+            originalMessage: r.originalMessage || '',
+            timestamp: r.createdAt || Date.now(),
             messageId: r.conversationId,
             agent: r.agentId,
             files: r.files,

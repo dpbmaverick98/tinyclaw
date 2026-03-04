@@ -313,6 +313,8 @@ async function completeConversation(
     senderId: conv.senderId,
     files: allFiles.length > 0 ? allFiles : undefined,
     metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+    originalMessage: conv.originalMessage,
+    createdAt: Date.now(),
   };
   
   await publishResponse(conv.id, responseMsg);

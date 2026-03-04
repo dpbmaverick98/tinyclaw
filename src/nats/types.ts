@@ -58,6 +58,10 @@ export interface ResponseMessage {
   files?: string[];
   /** Plugin metadata */
   metadata?: Record<string, unknown>;
+  /** Original user message (for reference) */
+  originalMessage?: string;
+  /** When response was created */
+  createdAt?: number;
 }
 
 /**
