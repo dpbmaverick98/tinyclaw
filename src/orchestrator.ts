@@ -1,34 +1,21 @@
 #!/usr/bin/env node
 /**
  * TinyClaw NATS Orchestrator
- * 
- * Replaces queue-processor.ts with a NATS-based architecture.
- * 
- * Key differences from queue-processor:
- * - No SQLite database, uses NATS JetStream
- * - No manual locks, uses NATS consumer guarantees
- * - No pending counters, uses NATS message ack/nak
- * - Conversation state in NATS KV instead of in-memory Map
- * - Each agent has its own durable consumer
- * 
- * Architecture:
- * 1. Connect to NATS
- * 2. Setup JetStream streams
- * 3. Start API server
- * 4. Start durable consumers for each agent
- * 5. Start response consumers for each channel
- * 6. Handle graceful shutdown
+ *
+ * Simplified NATS-based orchestrator with inline stream setup.
  */
 
 import fs from 'fs';
 import path from 'path';
-import { initNATS, closeNATS, isNATSConnected, setupStreams, startAgentWorker, publishEvent } from './nats';
+import { RetentionPolicy, StorageType } from 'nats';
+import { initNATS, closeNATS, isNATSConnected, startAgentWorker, publishEvent, getNATS } from './nats';
 import { getSettings, getAgents, getTeams, LOG_FILE, CHATS_DIR, FILES_DIR } from './lib/config';
 import { log } from './lib/logging';
 import { startApiServer } from './server';
 import { loadPlugins } from './lib/plugins';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
+const STREAM_PREFIX = process.env.NATS_STREAM_PREFIX || 'tinyclaw';
 
 // Ensure directories exist
 [FILES_DIR, path.dirname(LOG_FILE), CHATS_DIR].forEach(dir => {
@@ -36,6 +23,54 @@ const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
     fs.mkdirSync(dir, { recursive: true });
   }
 });
+
+/**
+ * Setup JetStream streams inline
+ */
+async function setupStreams(): Promise<void> {
+  const { jsm } = getNATS();
+
+  // MESSAGES stream - Incoming messages for agents
+  await jsm.streams.add({
+    name: `${STREAM_PREFIX}_MESSAGES`,
+    subjects: [`${STREAM_PREFIX}.messages.>`],
+    retention: RetentionPolicy.Limits,
+    max_msgs: 10000,
+    max_age: 24 * 60 * 60 * 1000 * 1000000, // 24h
+    storage: StorageType.File,
+  }).catch(err => {
+    if (!err.message?.includes('already exists')) throw err;
+    log('DEBUG', 'MESSAGES stream already exists');
+  });
+
+  // RESPONSES stream - Outgoing responses to channels
+  await jsm.streams.add({
+    name: `${STREAM_PREFIX}_RESPONSES`,
+    subjects: [`${STREAM_PREFIX}.responses.>`],
+    retention: RetentionPolicy.Limits,
+    max_msgs: 1000,
+    max_age: 60 * 60 * 1000 * 1000000, // 1h
+    storage: StorageType.File,
+  }).catch(err => {
+    if (!err.message?.includes('already exists')) throw err;
+    log('DEBUG', 'RESPONSES stream already exists');
+  });
+
+  // EVENTS stream - Real-time events for UI
+  await jsm.streams.add({
+    name: `${STREAM_PREFIX}_EVENTS`,
+    subjects: [`${STREAM_PREFIX}.events.>`],
+    retention: RetentionPolicy.Limits,
+    max_msgs: 5000,
+    max_age: 24 * 60 * 60 * 1000 * 1000000, // 24h
+    storage: StorageType.Memory,
+  }).catch(err => {
+    if (!err.message?.includes('already exists')) throw err;
+    log('DEBUG', 'EVENTS stream already exists');
+  });
+
+  log('INFO', 'NATS streams initialized');
+}
 
 /**
  * Log agent and team configuration

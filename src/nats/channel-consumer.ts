@@ -16,6 +16,7 @@
 import { connect, JSONCodec } from 'nats';
 import { jetstream } from '@nats-io/jetstream';
 import { ResponseMessage } from './types';
+import { STREAM_PREFIX } from './index';
 
 const jc = JSONCodec();
 
@@ -47,7 +48,7 @@ export async function startChannelConsumer(
   });
 
   const js = jetstream(nc);
-  const prefix = process.env.NATS_STREAM_PREFIX || 'tinyclaw';
+  const prefix = STREAM_PREFIX;
 
   // Get existing consumer (created by orchestrator)
   const consumer = await js.consumers.get(`${prefix}_RESPONSES`, `responses-${channel}`);

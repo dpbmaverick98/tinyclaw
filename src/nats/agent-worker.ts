@@ -14,7 +14,7 @@
  */
 
 import { getNATS, getJSONCodec } from './connection';
-import { getStreamPrefix } from './streams';
+import { STREAM_PREFIX } from './index';
 import { AgentMessage, ResponseMessage } from './types';
 import { invokeAgent } from '../lib/invoke';
 import { getSettings, getAgents, getTeams } from '../lib/config';
@@ -38,7 +38,6 @@ const jc = getJSONCodec();
  */
 export async function startAgentWorker(agentId: string): Promise<void> {
   const { js, jsm } = getNATS();
-  const prefix = getStreamPrefix();
   const settings = getSettings();
   const agents = getAgents(settings);
   const teams = getTeams(settings);
@@ -48,8 +47,8 @@ export async function startAgentWorker(agentId: string): Promise<void> {
     throw new Error(`Agent ${agentId} not found`);
   }
 
-  const streamName = `${prefix}_MESSAGES`;
-  const subject = `${prefix}.messages.${agentId}`;
+  const streamName = `${STREAM_PREFIX}_MESSAGES`;
+  const subject = `${STREAM_PREFIX}.messages.${agentId}`;
   const durableName = `agent-${agentId}`;
 
   log('INFO', `Starting worker for agent ${agentId}`);
@@ -161,7 +160,7 @@ async function processMessage(
         senderId: msg.senderId,
       };
 
-      await js.publish(`${prefix}.messages.${mention.teammateId}`, jc.encode(handoffMsg));
+      await js.publish(`${STREAM_PREFIX}.messages.${mention.teammateId}`, jc.encode(handoffMsg));
     }
   } else {
     // No handoffs - publish final response
@@ -177,7 +176,7 @@ async function processMessage(
       createdAt: Date.now(),
     };
 
-    await js.publish(`${prefix}.responses.${responseMsg.channel}`, jc.encode(responseMsg));
+    await js.publish(`${STREAM_PREFIX}.responses.${responseMsg.channel}`, jc.encode(responseMsg));
     log('INFO', `✓ Response published for ${msg.conversationId}`);
   }
 }

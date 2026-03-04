@@ -7,8 +7,8 @@
 // Connection
 export { initNATS, getNATS, closeNATS, isNATSConnected, getJSONCodec, waitForNATS } from './connection';
 
-// Streams
-export { setupStreams, deleteStreams, getStreamPrefix } from './streams';
+// Stream prefix
+export const STREAM_PREFIX = process.env.NATS_STREAM_PREFIX || 'tinyclaw';
 
 // Types
 export type {
@@ -22,7 +22,7 @@ export type {
   AgentConsumerConfig,
 } from './types';
 
-// Publisher (simplified - direct publish functions)
+// Publisher
 export {
   enqueueUserMessage,
   publishResponse,

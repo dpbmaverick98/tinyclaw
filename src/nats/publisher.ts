@@ -6,7 +6,7 @@
  */
 
 import { getNATS, getJSONCodec } from './connection';
-import { getStreamPrefix } from './streams';
+import { STREAM_PREFIX } from './index';
 import { AgentMessage, ResponseMessage, EventMessage, EventType } from './types';
 import { log, emitEvent } from '../lib/logging';
 
@@ -25,7 +25,6 @@ export async function enqueueUserMessage(
   files?: string[]
 ): Promise<void> {
   const { js } = getNATS();
-  const prefix = getStreamPrefix();
 
   const message: AgentMessage = {
     conversationId,
@@ -38,7 +37,7 @@ export async function enqueueUserMessage(
     files,
   };
 
-  await js.publish(`${prefix}.messages.${firstAgent}`, jc.encode(message));
+  await js.publish(`${STREAM_PREFIX}.messages.${firstAgent}`, jc.encode(message));
   log('INFO', `Enqueued message for agent ${firstAgent}`);
 }
 
@@ -50,10 +49,9 @@ export async function publishResponse(
   response: ResponseMessage
 ): Promise<void> {
   const { js } = getNATS();
-  const prefix = getStreamPrefix();
   const channel = response.channel || 'api';
 
-  await js.publish(`${prefix}.responses.${channel}`, jc.encode(response));
+  await js.publish(`${STREAM_PREFIX}.responses.${channel}`, jc.encode(response));
   log('INFO', `Published response for conversation ${conversationId}`);
 }
 
@@ -65,7 +63,6 @@ export async function publishEvent(
   data: Record<string, unknown>
 ): Promise<void> {
   const { js } = getNATS();
-  const prefix = getStreamPrefix();
 
   const event: EventMessage = {
     type: eventType,
@@ -73,6 +70,6 @@ export async function publishEvent(
     data,
   };
 
-  await js.publish(`${prefix}.events.${eventType}`, jc.encode(event));
+  await js.publish(`${STREAM_PREFIX}.events.${eventType}`, jc.encode(event));
   emitEvent(eventType, { ...data, timestamp: event.timestamp });
 }
