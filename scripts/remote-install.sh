@@ -210,11 +210,20 @@ echo -e "${BLUE}[6/6] Installing NATS server...${NC}"
 if [ -f "$INSTALL_DIR/bin/nats-server" ]; then
     echo -e "${GREEN}✓ NATS server already installed${NC}"
 else
+    # Set required variables and stub logging functions for nats.sh
+    TINYCLAW_HOME="$INSTALL_DIR"
+    LOG_DIR="$INSTALL_DIR/logs"
+    SETTINGS_FILE="$INSTALL_DIR/settings.json"
+    mkdir -p "$LOG_DIR"
+    log_info()  { echo -e "${GREEN}  $*${NC}"; }
+    log_error() { echo -e "${RED}  $*${NC}"; }
+    log_warn()  { echo -e "${YELLOW}  $*${NC}"; }
+
     # Source the nats.sh functions
     source "$INSTALL_DIR/lib/nats.sh" 2>/dev/null || true
-    
-    # Try to install NATS
-    if command -v nats_install >/dev/null 2>&1; then
+
+    # Try to install NATS (use declare -f — command -v doesn't find shell functions)
+    if declare -f nats_install > /dev/null 2>&1; then
         if nats_install; then
             echo -e "${GREEN}✓ NATS server installed${NC}"
         else
