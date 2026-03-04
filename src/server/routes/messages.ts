@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { log, emitEvent } from '../../lib/logging';
-import { enqueueMessage } from '../../lib/db';
+import { enqueueUserMessage } from '../../nats/publisher';
 
 const app = new Hono();
 
@@ -23,20 +23,23 @@ app.post('/api/message', async (c) => {
     // Append channel and sender context as a signature
     const fullMessage = (channel && sender) ? `${message}\n\n— ${sender} via ${channel}` : message;
 
-    enqueueMessage({
-        channel: resolvedChannel,
-        sender: resolvedSender,
-        senderId: senderId || undefined,
-        message: fullMessage,
-        messageId,
-        agent: agent || undefined,
-        files: files && files.length > 0 ? files : undefined,
-    });
+    // Route to agent or default
+    const targetAgent = agent || 'default';
 
-    log('INFO', `[API] Message enqueued: ${message.substring(0, 60)}...`);
+    await enqueueUserMessage(
+        messageId,
+        fullMessage,
+        targetAgent,
+        resolvedChannel,
+        resolvedSender,
+        senderId,
+        files
+    );
+
+    log('INFO', `[API] Message enqueued for ${targetAgent}: ${message.substring(0, 60)}...`);
     emitEvent('message_enqueued', {
         messageId,
-        agent: agent || null,
+        agent: targetAgent,
         channel: resolvedChannel,
         sender: resolvedSender,
         message: message.substring(0, 120),
