@@ -498,4 +498,7 @@ process.on('SIGTERM', () => {
 
 // Start client
 log('INFO', 'Starting Discord client...');
-client.login(DISCORD_BOT_TOKEN);
+client.login(DISCORD_BOT_TOKEN).catch((err) => {
+    log('ERROR', `Failed to login: ${err.message}`);
+    process.exit(1);
+});
