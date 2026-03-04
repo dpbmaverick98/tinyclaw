@@ -388,7 +388,10 @@ async function handleNATSResponse(
 
         if (!chat && response.senderId) {
             try {
-                chat = await client.getChatById(response.senderId);
+                const chatId = response.senderId.includes('@')
+                    ? response.senderId
+                    : `${response.senderId}@c.us`;
+                chat = await client.getChatById(chatId);
             } catch (err) {
                 log('ERROR', `Could not open chat for senderId ${response.senderId}: ${(err as Error).message}`);
             }
@@ -419,7 +422,11 @@ async function handleNATSResponse(
         // Send text (WhatsApp has high limits, no splitting needed)
         const responseText = response.response;
         if (responseText) {
-            await chat.sendMessage(responseText);
+            if (pending) {
+                await pending.message.reply(responseText);
+            } else {
+                await chat.sendMessage(responseText);
+            }
         }
 
         log('INFO', `Sent ${pending ? 'response' : 'proactive message'} to ${response.sender} (${responseText.length} chars${files.length > 0 ? `, ${files.length} file(s)` : ''})`);
