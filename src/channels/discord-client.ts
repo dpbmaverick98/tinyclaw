@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * Discord Client for TinyClaw Simple
- * Writes DM messages to queue and reads responses
- * Does NOT call Claude directly - that's handled by queue-processor
+ * Discord Client for TinyClaw
+ * Writes DM messages to queue via HTTP and reads responses via NATS
  */
 
 import { Client, Events, GatewayIntentBits, Partials, Message, DMChannel, AttachmentBuilder } from 'discord.js';
@@ -12,6 +11,8 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { ensureSenderPaired } from '../lib/pairing';
+import { connectAndConsume } from '../nats/client-consumer';
+import { ResponseMessage } from '../nats/types';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 const API_BASE = `http://localhost:${API_PORT}`;
@@ -94,7 +95,7 @@ function downloadFile(url: string, destPath: string): Promise<void> {
 
 // Track pending messages (waiting for response)
 const pendingMessages = new Map<string, PendingMessage>();
-let processingOutgoingQueue = false;
+let natsConsumer: { stop: () => void } | null = null;
 
 // Logger
 function log(level: string, message: string): void {
@@ -210,7 +211,6 @@ const client = new Client({
 // Client ready
 client.on(Events.ClientReady, (readyClient) => {
     log('INFO', `Discord bot connected as ${readyClient.user.tag}`);
-    log('INFO', 'Listening for DMs...');
 });
 
 // Message received - Write to queue
@@ -375,96 +375,87 @@ client.on(Events.MessageCreate, async (message: Message) => {
     }
 });
 
-// Watch for responses via API
-async function checkOutgoingQueue(): Promise<void> {
-    if (processingOutgoingQueue) {
-        return;
-    }
-
-    processingOutgoingQueue = true;
-
+// Handle responses from NATS
+async function handleNATSResponse(
+    response: ResponseMessage,
+    ack: () => void,
+    nak: () => void
+): Promise<void> {
     try {
-        const res = await fetch(`${API_BASE}/api/responses/pending?channel=discord`);
-        if (!res.ok) return;
-        const responses = await res.json() as any[];
+        const pending = pendingMessages.get(response.conversationId);
+        let dmChannel = pending?.channel ?? null;
 
-        for (const resp of responses) {
+        if (!dmChannel && response.senderId) {
             try {
-                const responseText = resp.message;
-                const messageId = resp.messageId;
-                const sender = resp.sender;
-                const senderId = resp.senderId;
-                const files: string[] = resp.files || [];
-
-                // Find pending message, or fall back to senderId for proactive messages
-                const pending = pendingMessages.get(messageId);
-                let dmChannel = pending?.channel ?? null;
-
-                if (!dmChannel && senderId) {
-                    try {
-                        const user = await client.users.fetch(senderId);
-                        dmChannel = await user.createDM();
-                    } catch (err) {
-                        log('ERROR', `Could not open DM for senderId ${senderId}: ${(err as Error).message}`);
-                    }
-                }
-
-                if (dmChannel) {
-                    // Send any attached files
-                    if (files.length > 0) {
-                        const attachments: AttachmentBuilder[] = [];
-                        for (const file of files) {
-                            try {
-                                if (!fs.existsSync(file)) continue;
-                                attachments.push(new AttachmentBuilder(file));
-                            } catch (fileErr) {
-                                log('ERROR', `Failed to prepare file ${file}: ${(fileErr as Error).message}`);
-                            }
-                        }
-                        if (attachments.length > 0) {
-                            await dmChannel.send({ files: attachments });
-                            log('INFO', `Sent ${attachments.length} file(s) to Discord`);
-                        }
-                    }
-
-                    // Split message if needed (Discord 2000 char limit)
-                    if (responseText) {
-                        const chunks = splitMessage(responseText);
-
-                        if (chunks.length > 0) {
-                            if (pending) {
-                                await pending.message.reply(chunks[0]!);
-                            } else {
-                                await dmChannel.send(chunks[0]!);
-                            }
-                        }
-                        for (let i = 1; i < chunks.length; i++) {
-                            await dmChannel.send(chunks[i]!);
-                        }
-                    }
-
-                    log('INFO', `Sent ${pending ? 'response' : 'proactive message'} to ${sender} (${responseText.length} chars${files.length > 0 ? `, ${files.length} file(s)` : ''})`);
-
-                    if (pending) pendingMessages.delete(messageId);
-                    await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
-                } else {
-                    log('WARN', `No pending message for ${messageId} and no senderId, acking`);
-                    await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
-                }
-            } catch (error) {
-                log('ERROR', `Error processing response ${resp.id}: ${(error as Error).message}`);
-                // Don't ack on error, will retry next poll
+                const user = await client.users.fetch(response.senderId);
+                dmChannel = await user.createDM();
+            } catch (err) {
+                log('ERROR', `Could not open DM for senderId ${response.senderId}: ${(err as Error).message}`);
             }
         }
+
+        if (!dmChannel) {
+            log('WARN', `No target for ${response.conversationId}, acking`);
+            ack();
+            return;
+        }
+
+        const files = response.files || [];
+
+        // Send any attached files
+        if (files.length > 0) {
+            const attachments: AttachmentBuilder[] = [];
+            for (const file of files) {
+                try {
+                    if (!fs.existsSync(file)) continue;
+                    attachments.push(new AttachmentBuilder(file));
+                } catch (fileErr) {
+                    log('ERROR', `Failed to prepare file ${file}: ${(fileErr as Error).message}`);
+                }
+            }
+            if (attachments.length > 0) {
+                await dmChannel.send({ files: attachments });
+                log('INFO', `Sent ${attachments.length} file(s) to Discord`);
+            }
+        }
+
+        // Split message if needed (Discord 2000 char limit)
+        const responseText = response.response;
+        if (responseText) {
+            const chunks = splitMessage(responseText);
+
+            if (chunks.length > 0) {
+                if (pending) {
+                    await pending.message.reply(chunks[0]!);
+                } else {
+                    await dmChannel.send(chunks[0]!);
+                }
+            }
+            for (let i = 1; i < chunks.length; i++) {
+                await dmChannel.send(chunks[i]!);
+            }
+        }
+
+        log('INFO', `Sent ${pending ? 'response' : 'proactive message'} to ${response.sender} (${responseText.length} chars${files.length > 0 ? `, ${files.length} file(s)` : ''})`);
+
+        if (pending) pendingMessages.delete(response.conversationId);
+        ack(); // Acknowledge NATS message
     } catch (error) {
-        log('ERROR', `Outgoing queue error: ${(error as Error).message}`);
-    } finally {
-        processingOutgoingQueue = false;
+        log('ERROR', `Failed to deliver response: ${(error as Error).message}`);
+        nak(); // Negative ack - message will be redelivered
     }
 }
 
-// Check outgoing queue every second
-setInterval(checkOutgoingQueue, 1000);
+// Start NATS consumer for responses
+async function startNATSConsumer(): Promise<void> {
+    try {
+        natsConsumer = await connectAndConsume('discord', handleNATSResponse);
+        log('INFO', 'NATS consumer started for Discord responses');
+    } catch (err) {
+        log('ERROR', `Failed to start NATS consumer: ${(err as Error).message}`);
+        // Will retry via connectAndConsume's built-in retry logic
+    }
+}
 
 // Refresh typing indicator every 8 seconds (Discord typing expires after ~10s)
 setInterval(() => {
@@ -486,16 +477,28 @@ process.on('uncaughtException', (error) => {
 // Graceful shutdown
 process.on('SIGINT', () => {
     log('INFO', 'Shutting down Discord client...');
+    if (natsConsumer) {
+        natsConsumer.stop();
+    }
     client.destroy();
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     log('INFO', 'Shutting down Discord client...');
+    if (natsConsumer) {
+        natsConsumer.stop();
+    }
     client.destroy();
     process.exit(0);
 });
 
 // Start client
 log('INFO', 'Starting Discord client...');
-client.login(DISCORD_BOT_TOKEN);
+client.login(DISCORD_BOT_TOKEN).then(async () => {
+    // Start NATS consumer after Discord is ready
+    await startNATSConsumer();
+}).catch((err) => {
+    log('ERROR', `Failed to login: ${err.message}`);
+    process.exit(1);
+});
