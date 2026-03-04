@@ -159,8 +159,8 @@ async function ensureStreamExists(
         name: streamName,
         subjects: [`${prefix}.responses.>`],
         retention: RetentionPolicy.Limits,
-        maxMsgs: 1000,
-        maxAge: 60 * 60 * 1000 * 1000000, // 1h in nanoseconds
+        max_msgs: 1000,
+        max_age: 60 * 60 * 1000 * 1000000, // 1h in nanoseconds
         storage: StorageType.File,
       });
       console.log(`[${streamName}] Created stream`);
