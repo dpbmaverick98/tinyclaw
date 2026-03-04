@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  nats:
+    image: nats:latest
+    command: "-js -m 8222 -sd /data/jetstream"
+    ports:
+      - "4222:4222"   # NATS client port
+      - "8222:8222"   # Monitoring UI
+    volumes:
+      - nats-data:/data/jetstream
+    healthcheck:
+      test: ["CMD", "nats", "server", "check", "-s", "nats://localhost:4222"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  tinyclaw:
+    build: .
+    environment:
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      nats:
+        condition: service_healthy
+    volumes:
+      - tinyclaw-data:/app/workspace
+
+volumes:
+  nats-data:
+  tinyclaw-data:
