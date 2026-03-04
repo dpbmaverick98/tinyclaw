@@ -32,7 +32,7 @@
 - ✅ **Parallel processing** - Agents process messages concurrently
 - ✅ **Live TUI dashboard** - Real-time team visualizer for monitoring agent chains
 - ✅ **Persistent sessions** - Conversation context maintained across restarts
-- ✅ **SQLite queue** - Atomic transactions, retry logic, dead-letter management
+- ✅ **NATS message queue** - Reliable, ordered message delivery with JetStream
 - ✅ **Plugin system** - Extend TinyClaw with custom plugins for message hooks and event listeners
 - ✅ **24/7 operation** - Runs in tmux for always-on availability
 
@@ -50,6 +50,7 @@ We are actively looking for contributors. Please reach out.
 - Node.js v18+
 - tmux, jq
 - Bash 3.2+
+- [NATS Server](https://docs.nats.io/running-a-nats-service/introduction/installation) (for message queue)
 - [Claude Code CLI](https://claude.com/claude-code) (for Anthropic provider)
 - [Codex CLI](https://docs.openai.com/codex) (for OpenAI provider)
 
