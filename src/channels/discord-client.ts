@@ -478,19 +478,19 @@ process.on('uncaughtException', (error) => {
 });
 
 // Graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
     log('INFO', 'Shutting down Discord client...');
     if (natsConsumer) {
-        natsConsumer.stop();
+        await natsConsumer.stop();
     }
     client.destroy();
     process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
     log('INFO', 'Shutting down Discord client...');
     if (natsConsumer) {
-        natsConsumer.stop();
+        await natsConsumer.stop();
     }
     client.destroy();
     process.exit(0);

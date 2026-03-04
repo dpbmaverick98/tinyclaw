@@ -66,7 +66,7 @@ export async function connectAndConsume(
     ack: () => void,
     nak: () => void
   ) => Promise<void>
-): Promise<{ stop: () => void }> {
+): Promise<{ stop: () => Promise<void> }> {
   // Normalize URL: ensure nats:// scheme is present
   const rawUrl = process.env.NATS_URL || 'localhost:4222';
   const url = rawUrl.includes('://') ? rawUrl : `nats://${rawUrl}`;
@@ -76,26 +76,11 @@ export async function connectAndConsume(
   const durableName = `responses-${channel}`;
 
   // Stop any existing consumer for this channel
-  stopConsumer(channel);
-
-  // Connect to NATS with retry logic
-  const { nc, js, jsm } = await connectWithRetry(url, channel);
-
-  // Ensure stream exists (orchestrator creates it, but we check for safety)
-  await ensureStreamExists(jsm, streamName, prefix);
-
-  // Create durable pull consumer (idempotent - ok if already exists)
-  await createConsumer(jsm, streamName, durableName, subject);
-
-  // Start consuming messages with auto-restart on error
-  const consumer = await js.consumers.get(streamName, durableName);
-  const messages = await consumer.consume();
-
-  // Store for stop() functionality
-  activeConsumers.set(channel, messages);
+  await stopConsumer(channel);
 
   // Start the consume loop with auto-reconnect wrapper
-  startConsumeLoopWithRestart(
+  // (It will handle all connection and consumer setup internally)
+  const stopFn = startConsumeLoopWithRestart(
     channel,
     streamName,
     durableName,
@@ -104,12 +89,7 @@ export async function connectAndConsume(
     onResponse
   );
 
-  return {
-    stop: () => {
-      stopConsumer(channel);
-      closeConnection(nc, channel);
-    },
-  };
+  return { stop: stopFn };
 }
 
 /**
@@ -210,9 +190,36 @@ async function createConsumer(
 }
 
 /**
- * Start the consume loop with automatic restart on connection loss
+ * Start the consume loop with automatic restart on connection loss.
+ * Returns a stop function for graceful shutdown.
  */
-async function startConsumeLoopWithRestart(
+function startConsumeLoopWithRestart(
+  channel: string,
+  streamName: string,
+  durableName: string,
+  subject: string,
+  url: string,
+  onResponse: (
+    response: ResponseMessage,
+    ack: () => void,
+    nak: () => void
+  ) => Promise<void>
+): () => Promise<void> {
+  // Mark as active immediately so stop() can signal exit
+  activeConsumers.set(channel, { close: () => { } } as any);
+
+  // Start background reconnect loop (fire-and-forget)
+  runReconnectLoop(channel, streamName, durableName, subject, url, onResponse);
+
+  // Return stop function
+  return () => stopConsumer(channel);
+}
+
+/**
+ * Background loop that maintains a persistent connection
+ * Automatically reconnects with backoff if the consumer dies
+ */
+async function runReconnectLoop(
   channel: string,
   streamName: string,
   durableName: string,
@@ -225,37 +232,53 @@ async function startConsumeLoopWithRestart(
   ) => Promise<void>
 ): Promise<void> {
   let reconnectDelay = RECONNECT_BASE_DELAY;
+  let nc: NatsConnection | null = null;
 
   while (activeConsumers.has(channel)) {
     try {
-      const { nc, js, jsm } = await connectWithRetry(url, channel);
-      const consumer = await js.consumers.get(streamName, durableName);
+      // Connect and setup consumer
+      const conn = await connectWithRetry(url, channel);
+      nc = conn.nc;
+
+      await ensureStreamExists(conn.jsm, streamName, process.env.NATS_STREAM_PREFIX || 'tinyclaw');
+      await createConsumer(conn.jsm, streamName, durableName, subject);
+
+      const consumer = await conn.js.consumers.get(streamName, durableName);
       const messages = await consumer.consume();
 
       activeConsumers.set(channel, messages);
       reconnectDelay = RECONNECT_BASE_DELAY; // Reset backoff on successful connect
 
-      await runConsumeLoop(channel, messages, onResponse, nc);
-    } catch (err) {
-      console.error(
-        `[${channel}] Consumer error, restarting in ${reconnectDelay}ms:`,
-        err
-      );
+      await runConsumeLoop(channel, messages, onResponse, conn.nc);
 
-      // Exponential backoff: 1s, 2s, 4s, ..., max 30s
-      reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_DELAY);
+      // If runConsumeLoop exits normally (not an error), stop was called
+      if (!activeConsumers.has(channel)) {
+        break;
+      }
+    } catch (err) {
+      // Only log as error if consumer is still active
+      if (activeConsumers.has(channel)) {
+        console.error(
+          `[${channel}] Consumer reconnecting in ${reconnectDelay}ms:`,
+          err
+        );
+        reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_DELAY);
+      }
       await new Promise((r) => setTimeout(r, reconnectDelay));
     }
+  }
+
+  // Cleanup on exit
+  if (nc) {
+    await closeConnection(nc, channel).catch(() => { });
   }
 }
 
 /**
- * Run the consume loop
+ * Run the consume loop until stopped or connection lost
  *
- * Note: This function runs until the consumer is stopped or an
- * unrecoverable error occurs. Errors in message processing are
- * handled internally (those trigger msg.nak()). Connection errors
- * bubble up to the restart wrapper.
+ * Note: Errors in message processing are handled internally (trigger msg.nak()).
+ * Connection errors bubble up so runReconnectLoop can restart.
  */
 async function runConsumeLoop(
   channel: string,
@@ -269,6 +292,11 @@ async function runConsumeLoop(
 ): Promise<void> {
   try {
     for await (const msg of messages) {
+      // If stopConsumer() was called, exit cleanly
+      if (!activeConsumers.has(channel)) {
+        return;
+      }
+
       try {
         const response = jc.decode(msg.data) as ResponseMessage;
 
@@ -282,13 +310,11 @@ async function runConsumeLoop(
         msg.nak();
       }
     }
-    // Loop exited — connection was lost or consumer was closed
-    throw new Error('Consumer message iterator ended (connection lost?)');
+    // Iterator ended — connection was lost
+    throw new Error('Consumer iterator ended (connection lost)');
   } catch (err) {
     console.error(`[${channel}] Consume loop error:`, err);
-    throw err; // Re-throw so restart wrapper catches it
-  } finally {
-    activeConsumers.delete(channel);
+    throw err; // Re-throw so runReconnectLoop reconnects
   }
 }
 
@@ -296,16 +322,21 @@ async function runConsumeLoop(
  * Stop a consumer for a channel (graceful shutdown)
  * Deleting from activeConsumers signals the restart loop to exit
  */
-function stopConsumer(channel: string): void {
+async function stopConsumer(channel: string): Promise<void> {
   const messages = activeConsumers.get(channel);
-  if (messages) {
+  activeConsumers.delete(channel); // Signal restart loop to stop
+
+  if (messages && typeof messages.close === 'function') {
     try {
-      messages.close();
+      const closeResult = (messages.close as any)();
+      // If close() returns a Promise, await it
+      if (closeResult && typeof closeResult.then === 'function') {
+        await closeResult;
+      }
     } catch (err) {
       console.error(`[${channel}] Error closing consumer:`, err);
     }
   }
-  activeConsumers.delete(channel);
 }
 
 /**

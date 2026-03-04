@@ -490,7 +490,7 @@ process.on('SIGINT', async () => {
     }
 
     if (natsConsumer) {
-        natsConsumer.stop();
+        await natsConsumer.stop();
     }
 
     await client.destroy();
@@ -507,7 +507,7 @@ process.on('SIGTERM', async () => {
     }
 
     if (natsConsumer) {
-        natsConsumer.stop();
+        await natsConsumer.stop();
     }
 
     await client.destroy();
