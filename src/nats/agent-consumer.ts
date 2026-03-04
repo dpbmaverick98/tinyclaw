@@ -21,6 +21,7 @@ import { handleLongResponse, collectFiles } from '../lib/response';
 import fs from 'fs';
 import path from 'path';
 import { CHATS_DIR } from '../lib/config';
+import { DeliverPolicy, AckPolicy } from 'nats';
 
 const jc = getJSONCodec();
 
@@ -53,8 +54,8 @@ export async function startAgentConsumer(agentId: string): Promise<void> {
   const sub = await js.subscribe(subject, {
     config: {
       durable_name: durableName,
-      deliver_policy: 'all',
-      ack_policy: 'explicit',
+      deliver_policy: DeliverPolicy.All,
+      ack_policy: AckPolicy.Explicit,
       max_ack_pending: 1,
       ack_wait: 10 * 60 * 1000 * 1000000, // 10 min in nanoseconds
     },
@@ -279,7 +280,7 @@ async function completeConversation(
   
   // Process response
   finalResponse = finalResponse.trim();
-  const outboundFiles = new Set(conv.files);
+  const outboundFiles = new Set<string>(conv.files);
   collectFiles(finalResponse, outboundFiles);
   const files = Array.from(outboundFiles);
   
@@ -299,7 +300,7 @@ async function completeConversation(
   });
   
   // Handle long responses
-  const { message: responseMessage, files: allFiles } = handleLongResponse(hookedResponse, files);
+  const { message: responseMessage, files: allFiles } = handleLongResponse(hookedResponse, files as string[]);
   
   // Publish response
   const responseMsg: ResponseMessage = {

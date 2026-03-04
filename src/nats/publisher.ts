@@ -148,14 +148,15 @@ let kvConversations: any = null;
  * Initialize KV buckets
  */
 export async function initKV(): Promise<void> {
-  const { jsm } = getNATS();
-  
+  const { js } = getNATS();
+
   try {
-    kvConversations = await jsm.views.kv(KV_BUCKETS.CONVERSATIONS);
+    // Try to get existing bucket
+    kvConversations = await js.views.kv(KV_BUCKETS.CONVERSATIONS);
     log('DEBUG', 'KV bucket conversations already exists');
   } catch {
     // Create if doesn't exist
-    kvConversations = await jsm.views.kv(KV_BUCKETS.CONVERSATIONS, {
+    kvConversations = await js.views.kv(KV_BUCKETS.CONVERSATIONS, {
       history: 1,
       ttl: 30 * 60 * 1000 * 1000000, // 30 min in nanoseconds
     });

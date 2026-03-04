@@ -9,6 +9,7 @@ import { getNATS, getJSONCodec } from './connection';
 import { getStreamPrefix } from './streams';
 import { ResponseMessage } from './types';
 import { log } from '../lib/logging';
+import { DeliverPolicy, AckPolicy } from 'nats';
 
 const jc = getJSONCodec();
 
@@ -39,8 +40,8 @@ export async function startResponseConsumer(
   const sub = await js.subscribe(subject, {
     config: {
       durable_name: durableName,
-      deliver_policy: 'all',
-      ack_policy: 'explicit',
+      deliver_policy: DeliverPolicy.All,
+      ack_policy: AckPolicy.Explicit,
       max_ack_pending: 10, // Allow some parallelism for responses
       ack_wait: 30 * 1000 * 1000000, // 30 seconds
     },
@@ -94,8 +95,8 @@ export async function getRecentResponses(
     // Create ephemeral consumer to read recent messages
     const sub = await js.subscribe(`${prefix}.responses.${channel}`, {
       config: {
-        deliver_policy: 'last',
-        ack_policy: 'none', // Don't ack, just read
+        deliver_policy: DeliverPolicy.Last,
+        ack_policy: AckPolicy.None, // Don't ack, just read
       },
       max: limit,
     });
