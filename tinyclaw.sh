@@ -464,6 +464,48 @@ case "${1:-}" in
     pairing)
         pairing_command "${2:-}" "${3:-}"
         ;;
+    nats)
+        case "${2:-}" in
+            start)
+                nats_start
+                ;;
+            stop)
+                nats_stop
+                ;;
+            status)
+                nats_status
+                ;;
+            logs)
+                if [ "${3:-}" = "-f" ] || [ "${3:-}" = "--follow" ]; then
+                    nats_logs_follow
+                else
+                    nats_logs "${3:-50}"
+                fi
+                ;;
+            install)
+                nats_install
+                ;;
+            *)
+                echo "Usage: $0 nats {start|stop|status|logs|install}"
+                echo ""
+                echo "NATS Commands:"
+                echo "  start              Start NATS server"
+                echo "  stop               Stop NATS server"
+                echo "  status             Show NATS status"
+                echo "  logs [n]           Show last n log lines (default: 50)"
+                echo "  logs -f|--follow   Follow logs in real-time"
+                echo "  install            Download and install NATS binary"
+                echo ""
+                echo "Examples:"
+                echo "  $0 nats start"
+                echo "  $0 nats status"
+                echo "  $0 nats logs 100"
+                echo "  $0 nats logs --follow"
+                echo ""
+                exit 1
+                ;;
+        esac
+        ;;
     attach)
         tmux attach -t "$TMUX_SESSION"
         ;;
@@ -477,7 +519,7 @@ case "${1:-}" in
         local_names=$(IFS='|'; echo "${ALL_CHANNELS[*]}")
         echo -e "${BLUE}TinyClaw - Claude Code + Messaging Channels${NC}"
         echo ""
-        echo "Usage: $0 {start|stop|restart|status|setup|send|logs|reset <agent_id>|channels|provider|model|agent|team|pairing|update|attach}"
+        echo "Usage: $0 {start|stop|restart|status|setup|send|logs|reset <agent_id>|channels|provider|model|agent|team|pairing|nats|update|attach}"
         echo ""
         echo "Commands:"
         echo "  start                    Start TinyClaw"
@@ -494,12 +536,14 @@ case "${1:-}" in
         echo "  agent {list|add|remove|show|reset|provider}  Manage agents"
         echo "  team {list|add|remove|show|add-agent|remove-agent|visualize}  Manage teams"
         echo "  pairing {pending|approved|list|approve <code>|unpair <channel> <sender_id>}  Manage sender approvals"
+        echo "  nats {start|stop|status|logs|install}  Manage NATS server"
         echo "  update                   Update TinyClaw to latest version"
         echo "  attach                   Attach to tmux session"
         echo ""
         echo "Examples:"
         echo "  $0 start"
         echo "  $0 status"
+        echo "  $0 nats status"
         echo "  $0 provider openai --model gpt-5.3-codex"
         echo "  $0 model opus"
         echo "  $0 reset coder"
