@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * Telegram Client for TinyClaw Simple
- * Writes DM messages to queue and reads responses
- * Does NOT call Claude directly - that's handled by queue-processor
+ * Telegram Client for TinyClaw
+ * Writes DM messages to queue via HTTP and reads responses via NATS
  *
  * Setup: Create a bot via @BotFather on Telegram to get a bot token.
  */
@@ -14,6 +13,8 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { ensureSenderPaired } from '../lib/pairing';
+import { connectAndConsume } from '../nats/client-consumer';
+import { ResponseMessage } from '../nats/types';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 const API_BASE = `http://localhost:${API_PORT}`;
@@ -76,9 +77,9 @@ function buildUniqueFilePath(dir: string, preferredName: string): string {
 
 // Track pending messages (waiting for response)
 const pendingMessages = new Map<string, PendingMessage>();
-let processingOutgoingQueue = false;
 let lastPollingActivity = Date.now();
 let pollingRestartInProgress = false;
+let natsConsumer: { stop: () => void } | null = null;
 
 // Logger
 function log(level: string, message: string): void {
@@ -261,25 +262,6 @@ function pairingMessage(code: string): string {
 
 // Initialize Telegram bot (polling mode)
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
-
-// Bot ready
-bot.getMe().then(async (me: TelegramBot.User) => {
-    log('INFO', `Telegram bot connected as @${me.username}`);
-    lastPollingActivity = Date.now();
-
-    // Register bot commands so they appear in Telegram's "/" menu
-    await bot.setMyCommands([
-        { command: 'agent', description: 'List available agents' },
-        { command: 'team', description: 'List available teams' },
-        { command: 'reset', description: 'Reset conversation history' },
-        { command: 'restart', description: 'Restart TinyClaw' },
-    ]).catch((err: Error) => log('WARN', `Failed to register commands: ${err.message}`));
-
-    log('INFO', 'Listening for messages...');
-}).catch((err: Error) => {
-    log('ERROR', `Failed to connect: ${err.message}`);
-    process.exit(1);
-});
 
 // Message received - Write to queue
 bot.on('message', async (msg: TelegramBot.Message) => {
@@ -487,94 +469,84 @@ bot.on('message', async (msg: TelegramBot.Message) => {
     }
 });
 
-// Watch for responses via API
-async function checkOutgoingQueue(): Promise<void> {
-    if (processingOutgoingQueue) {
-        return;
-    }
-
-    processingOutgoingQueue = true;
-
+// Handle responses from NATS
+async function handleNATSResponse(
+    response: ResponseMessage,
+    ack: () => void,
+    nak: () => void
+): Promise<void> {
     try {
-        const res = await fetch(`${API_BASE}/api/responses/pending?channel=telegram`);
-        if (!res.ok) return;
-        const responses = await res.json() as any[];
+        const pending = pendingMessages.get(response.conversationId);
+        const targetChatId = pending?.chatId ?? (response.senderId ? Number(response.senderId) : null);
 
-        for (const resp of responses) {
-            try {
-                const responseText = resp.message;
-                const messageId = resp.messageId;
-                const sender = resp.sender;
-                const senderId = resp.senderId;
-                const files: string[] = resp.files || [];
+        if (!targetChatId || Number.isNaN(targetChatId)) {
+            log('WARN', `No target for ${response.conversationId}, acking`);
+            ack();
+            return;
+        }
 
-                // Find pending message, or fall back to senderId for proactive messages
-                const pending = pendingMessages.get(messageId);
-                const targetChatId = pending?.chatId ?? (senderId ? Number(senderId) : null);
+        const files = response.files || [];
 
-                if (targetChatId && !Number.isNaN(targetChatId)) {
-                    // Send any attached files first
-                    if (files.length > 0) {
-                        for (const file of files) {
-                            try {
-                                if (!fs.existsSync(file)) continue;
-                                const ext = path.extname(file).toLowerCase();
-                                if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
-                                    await bot.sendPhoto(targetChatId, file);
-                                } else if (['.mp3', '.ogg', '.wav', '.m4a'].includes(ext)) {
-                                    await bot.sendAudio(targetChatId, file);
-                                } else if (['.mp4', '.avi', '.mov', '.webm'].includes(ext)) {
-                                    await bot.sendVideo(targetChatId, file);
-                                } else {
-                                    await bot.sendDocument(targetChatId, file);
-                                }
-                                log('INFO', `Sent file to Telegram: ${path.basename(file)}`);
-                            } catch (fileErr) {
-                                log('ERROR', `Failed to send file ${file}: ${(fileErr as Error).message}`);
-                            }
-                        }
+        // Send any attached files first
+        if (files.length > 0) {
+            for (const file of files) {
+                try {
+                    if (!fs.existsSync(file)) continue;
+                    const ext = path.extname(file).toLowerCase();
+                    if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+                        await bot.sendPhoto(targetChatId, file);
+                    } else if (['.mp3', '.ogg', '.wav', '.m4a'].includes(ext)) {
+                        await bot.sendAudio(targetChatId, file);
+                    } else if (['.mp4', '.avi', '.mov', '.webm'].includes(ext)) {
+                        await bot.sendVideo(targetChatId, file);
+                    } else {
+                        await bot.sendDocument(targetChatId, file);
                     }
-
-                    // Split message if needed (Telegram 4096 char limit)
-                    if (responseText) {
-                        const chunks = splitMessage(responseText);
-                        const parseMode = resp.metadata?.parseMode as TelegramBot.ParseMode | undefined;
-
-                        if (chunks.length > 0) {
-                            const opts: TelegramBot.SendMessageOptions = pending
-                                ? { reply_to_message_id: pending.messageId }
-                                : {};
-                            if (parseMode) opts.parse_mode = parseMode;
-                            await sendTelegramMessage(targetChatId, chunks[0]!, opts);
-                        }
-                        for (let i = 1; i < chunks.length; i++) {
-                            await sendTelegramMessage(targetChatId, chunks[i]!, parseMode ? { parse_mode: parseMode } : {});
-                        }
-                    }
-
-                    log('INFO', `Sent ${pending ? 'response' : 'proactive message'} to ${sender} (${responseText.length} chars${files.length > 0 ? `, ${files.length} file(s)` : ''})`);
-
-                    if (pending) pendingMessages.delete(messageId);
-                    await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
-                } else {
-                    log('WARN', `No pending message for ${messageId} and no valid senderId, acking`);
-                    await fetch(`${API_BASE}/api/responses/${resp.id}/ack`, { method: 'POST' });
+                    log('INFO', `Sent file to Telegram: ${path.basename(file)}`);
+                } catch (fileErr) {
+                    log('ERROR', `Failed to send file ${file}: ${(fileErr as Error).message}`);
                 }
-            } catch (error) {
-                log('ERROR', `Error processing response ${resp.id}: ${(error as Error).message}`);
-                // Don't ack on error, will retry next poll
             }
         }
-    } catch (error) {
-        log('ERROR', `Outgoing queue error: ${(error as Error).message}`);
 
-    } finally {
-        processingOutgoingQueue = false;
+        // Split message if needed (Telegram 4096 char limit)
+        const responseText = response.response;
+        if (responseText) {
+            const chunks = splitMessage(responseText);
+            const parseMode = response.metadata?.parseMode as TelegramBot.ParseMode | undefined;
+
+            if (chunks.length > 0) {
+                const opts: TelegramBot.SendMessageOptions = pending
+                    ? { reply_to_message_id: pending.messageId }
+                    : {};
+                if (parseMode) opts.parse_mode = parseMode;
+                await sendTelegramMessage(targetChatId, chunks[0]!, opts);
+            }
+            for (let i = 1; i < chunks.length; i++) {
+                await sendTelegramMessage(targetChatId, chunks[i]!, parseMode ? { parse_mode: parseMode } : {});
+            }
+        }
+
+        log('INFO', `Sent ${pending ? 'response' : 'proactive message'} to ${response.sender} (${responseText.length} chars${files.length > 0 ? `, ${files.length} file(s)` : ''})`);
+
+        if (pending) pendingMessages.delete(response.conversationId);
+        ack(); // Acknowledge NATS message (removes from stream)
+    } catch (error) {
+        log('ERROR', `Failed to deliver response: ${(error as Error).message}`);
+        nak(); // Negative ack - message will be redelivered
     }
 }
 
-// Check outgoing queue every second
-setInterval(checkOutgoingQueue, 1000);
+// Start NATS consumer for responses
+async function startNATSConsumer(): Promise<void> {
+    try {
+        natsConsumer = await connectAndConsume('telegram', handleNATSResponse);
+        log('INFO', 'NATS consumer started for Telegram responses');
+    } catch (err) {
+        log('ERROR', `Failed to start NATS consumer: ${(err as Error).message}`);
+        // Will retry via connectAndConsume's built-in retry logic
+    }
+}
 
 // Refresh typing indicator every 4 seconds for pending messages
 setInterval(() => {
@@ -656,15 +628,43 @@ process.on('uncaughtException', (error) => {
 // Graceful shutdown
 process.on('SIGINT', () => {
     log('INFO', 'Shutting down Telegram client...');
+    if (natsConsumer) {
+        natsConsumer.stop();
+    }
     bot.stopPolling();
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     log('INFO', 'Shutting down Telegram client...');
+    if (natsConsumer) {
+        natsConsumer.stop();
+    }
     bot.stopPolling();
     process.exit(0);
 });
 
 // Start
 log('INFO', 'Starting Telegram client...');
+
+// Initialize bot and start NATS consumer
+bot.getMe().then(async (me: TelegramBot.User) => {
+    log('INFO', `Telegram bot connected as @${me.username}`);
+    lastPollingActivity = Date.now();
+
+    // Register bot commands so they appear in Telegram's "/" menu
+    await bot.setMyCommands([
+        { command: 'agent', description: 'List available agents' },
+        { command: 'team', description: 'List available teams' },
+        { command: 'reset', description: 'Reset conversation history' },
+        { command: 'restart', description: 'Restart TinyClaw' },
+    ]).catch((err: Error) => log('WARN', `Failed to register commands: ${err.message}`));
+
+    // Start NATS consumer for responses
+    await startNATSConsumer();
+
+    log('INFO', 'Listening for messages...');
+}).catch((err: Error) => {
+    log('ERROR', `Failed to connect: ${err.message}`);
+    process.exit(1);
+});
