@@ -100,7 +100,7 @@ async function processAgentMessage(
   log('INFO', `[${agentId}] Processing message from ${msg.from} in conversation ${msg.conversationId}`);
   
   // Emit event for UI
-  publishEvent('chain_step_start', {
+  await publishEvent('chain_step_start', {
     agentId,
     agentName: agent.name,
     fromAgent: msg.from,
@@ -137,7 +137,7 @@ async function processAgentMessage(
 
     // Emit team_chain_start for visualizer when a new team conversation begins
     if (teamContext) {
-      publishEvent('team_chain_start', {
+      await publishEvent('team_chain_start', {
         teamId: teamContext.teamId,
         teamName: teamContext.team.name,
         agents: teamContext.team.agents,
@@ -182,7 +182,7 @@ async function processAgentMessage(
   log('INFO', `[${agentId}] Generated response (${response.length} chars)`);
   
   // Emit event
-  publishEvent('chain_step_done', {
+  await publishEvent('chain_step_done', {
     agentId,
     agentName: agent.name,
     responseLength: response.length,
@@ -273,7 +273,7 @@ async function completeConversation(
 ): Promise<void> {
   log('INFO', `Conversation ${conv.id} complete — ${conv.responses.length} response(s)`);
   
-  publishEvent('team_chain_end', {
+  await publishEvent('team_chain_end', {
     teamId: conv.teamContext?.teamId,
     totalSteps: conv.responses.length,
     agents: conv.responses.map((r: any) => r.agentId),
@@ -335,7 +335,7 @@ async function completeConversation(
   
   log('INFO', `✓ Response ready [${conv.channel}] ${conv.sender} (${responseMessage.length} chars)`);
   
-  publishEvent('response_ready', {
+  await publishEvent('response_ready', {
     channel: conv.channel,
     sender: conv.sender,
     responseLength: responseMessage.length,
