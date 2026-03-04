@@ -22,13 +22,11 @@
 
 import fs from 'fs';
 import path from 'path';
-import { initNATS, closeNATS, isNATSConnected, setupStreams, startAgentConsumer, startResponseConsumer, publishEvent, initKV } from './nats';
-import { addPendingResponse } from './nats/response-buffer';
+import { initNATS, closeNATS, isNATSConnected, setupStreams, startAgentConsumer, publishEvent, initKV } from './nats';
 import { getSettings, getAgents, getTeams, LOG_FILE, CHATS_DIR, FILES_DIR } from './lib/config';
 import { log } from './lib/logging';
 import { startApiServer } from './server';
 import { loadPlugins } from './lib/plugins';
-import { ResponseMessage } from './nats/types';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
 
@@ -63,47 +61,35 @@ function logAgentConfig(): void {
 }
 
 /**
- * Deliver response to channel client
- * 
- * Note: Channel clients currently poll /api/responses/pending for responses.
- * This function logs the response for debugging. In future, this could
- * push directly to channel clients via WebSocket or webhook.
- */
-async function deliverResponse(response: ResponseMessage): Promise<void> {
-  addPendingResponse(response);
-  log('INFO', `[${response.channel}] Response ready for ${response.sender} (${response.response.length} chars)`);
-}
-
-/**
  * Main orchestrator
  */
 async function main(): Promise<void> {
   try {
     // Initialize NATS
     await initNATS(process.env.NATS_URL);
-    
+
     if (!isNATSConnected()) {
       throw new Error('NATS connection failed');
     }
-    
+
     // Setup JetStream streams
     await setupStreams();
-    
+
     // Initialize KV store
     await initKV();
-    
+
     // Load plugins
     await loadPlugins();
-    
+
     // Get configuration
     const settings = getSettings();
     const agents = getAgents(settings);
     const teams = getTeams(settings);
-    
+
     if (Object.keys(agents).length === 0) {
       log('WARN', 'No agents configured. Add agents via API or settings.');
     }
-    
+
     // Start API server
     const apiServer = startApiServer();
 
@@ -115,7 +101,7 @@ async function main(): Promise<void> {
 
     async function startAgentConsumerWithRestart(agentId: string): Promise<void> {
       runningConsumers.set(`agent:${agentId}`, true);
-      
+
       while (runningConsumers.get(`agent:${agentId}`)) {
         try {
           await startAgentConsumer(agentId);
@@ -133,41 +119,22 @@ async function main(): Promise<void> {
       consumerPromises.push(startAgentConsumerWithRestart(agentId));
     }
 
-    // Start response consumers for enabled channels
-    const enabledChannels = settings.channels?.enabled || ['telegram', 'discord', 'whatsapp', 'api'];
-    
-    async function startResponseConsumerWithRestart(channel: string): Promise<void> {
-      runningConsumers.set(`response:${channel}`, true);
-      
-      while (runningConsumers.get(`response:${channel}`)) {
-        try {
-          await startResponseConsumer(channel, deliverResponse);
-          break;
-        } catch (err) {
-          log('ERROR', `Response consumer for ${channel} crashed: ${(err as Error).message}`);
-          log('INFO', `Restarting response consumer for ${channel} in 5s...`);
-          await new Promise(r => setTimeout(r, 5000));
-        }
-      }
-    }
+    // Note: Response consumers are now handled by channel clients directly
+    // (telegram-client, discord-client, whatsapp-client connect to NATS themselves)
 
-    for (const channel of enabledChannels) {
-      consumerPromises.push(startResponseConsumerWithRestart(channel));
-    }
-    
     // Emit startup event
     publishEvent('processor_start', {
       agents: Object.keys(agents),
       teams: Object.keys(teams),
     });
-    
+
     log('INFO', 'TinyClaw NATS orchestrator started');
     log('INFO', `API server on port ${API_PORT}`);
     logAgentConfig();
-    
+
     // Keep running
     await Promise.all(consumerPromises);
-    
+
   } catch (err) {
     log('ERROR', `Orchestrator failed: ${(err as Error).message}`);
     await closeNATS();
