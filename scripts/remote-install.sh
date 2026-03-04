@@ -12,7 +12,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration
-GITHUB_REPO="TinyAGI/tinyclaw"
+GITHUB_REPO="dpbmaverick98/tinyclaw"
 DEFAULT_BRANCH="main"
 INSTALL_DIR=""
 
