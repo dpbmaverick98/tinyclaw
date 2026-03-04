@@ -1,9 +1,9 @@
 /**
  * NATS Connection Module
- * 
+ *
  * Manages the singleton connection to NATS server with automatic
  * reconnection and graceful shutdown support.
- * 
+ *
  * This replaces the SQLite database connection (db.ts) as the central
  * message queue backend.
  */
@@ -19,24 +19,24 @@ const jc = JSONCodec();
 
 /**
  * Initialize NATS connection and JetStream
- * 
+ *
  * @param url - NATS server URL (default: from env or localhost:4222)
  * @throws Error if connection fails
  */
 export async function initNATS(url = process.env.NATS_URL || 'localhost:4222'): Promise<void> {
   try {
-    nc = await connect({ 
+    nc = await connect({
       servers: url,
       reconnect: true,
       maxReconnectAttempts: -1, // Infinite reconnects
       reconnectTimeWait: 1000,  // 1 second between attempts
     });
-    
+
     js = nc.jetstream();
     jsm = await js.jetstreamManager();
-    
+
     log('INFO', `NATS connected to ${url}`);
-    
+
     // Handle disconnections gracefully
     nc.closed().then(() => {
       log('WARN', 'NATS connection closed');
@@ -44,7 +44,7 @@ export async function initNATS(url = process.env.NATS_URL || 'localhost:4222'): 
       js = null;
       jsm = null;
     });
-    
+
   } catch (err) {
     log('ERROR', `NATS connection failed: ${(err as Error).message}`);
     throw err;
@@ -53,7 +53,7 @@ export async function initNATS(url = process.env.NATS_URL || 'localhost:4222'): 
 
 /**
  * Get the NATS connection singleton
- * 
+ *
  * @throws Error if NATS not initialized
  */
 export function getNATS(): { nc: NatsConnection; js: JetStreamClient; jsm: JetStreamManager } {
@@ -94,7 +94,7 @@ export function isNATSConnected(): boolean {
 
 /**
  * Wait for NATS to be ready (with timeout)
- * 
+ *
  * @param timeoutMs - Maximum wait time in milliseconds
  * @returns true if connected, false if timeout
  */
@@ -104,5 +104,6 @@ export async function waitForNATS(timeoutMs = 30000): Promise<boolean> {
     if (isNATSConnected()) return true;
     await new Promise(r => setTimeout(r, 100));
   }
+  log('WARN', `waitForNATS timed out after ${timeoutMs}ms - NATS not connected`);
   return false;
 }

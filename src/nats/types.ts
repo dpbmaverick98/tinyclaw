@@ -12,7 +12,7 @@ export interface Message {
   role: 'user' | 'agent';
   agentId?: string;
   content: string;
-  timestamp: number;
+  timestamp?: number;
 }
 
 /**
