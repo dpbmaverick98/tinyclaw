@@ -78,10 +78,9 @@ echo -e "${BLUE}[1.5/6] Checking for NATS server...${NC}"
 if command -v nats-server >/dev/null 2>&1; then
     echo -e "${GREEN}✓ NATS server found${NC}"
 else
-    echo -e "${YELLOW}⚠ NATS server not found${NC}"
+    echo -e "${YELLOW}⚠ NATS server not found - will install${NC}"
     echo "  TinyClaw uses NATS for message queue."
-    echo "  Install: https://docs.nats.io/running-a-nats-service/introduction/installation"
-    echo "  Or use Docker: docker run -d --name nats -p 4222:4222 nats:latest -js"
+    echo "  Will download and install NATS binary automatically."
     echo ""
 fi
 echo ""
@@ -204,6 +203,31 @@ chmod +x lib/update.sh
 "$INSTALL_DIR/scripts/install.sh" || true
 
 echo -e "${GREEN}✓ CLI command installed${NC}"
+
+# Install NATS server binary
+echo ""
+echo -e "${BLUE}[6/6] Installing NATS server...${NC}"
+if [ -f "$INSTALL_DIR/bin/nats-server" ]; then
+    echo -e "${GREEN}✓ NATS server already installed${NC}"
+else
+    # Source the nats.sh functions
+    source "$INSTALL_DIR/lib/nats.sh" 2>/dev/null || true
+    
+    # Try to install NATS
+    if command -v nats_install >/dev/null 2>&1; then
+        if nats_install; then
+            echo -e "${GREEN}✓ NATS server installed${NC}"
+        else
+            echo -e "${YELLOW}⚠ NATS installation failed${NC}"
+            echo "  You can install manually later with: tinyclaw nats install"
+        fi
+    else
+        echo -e "${YELLOW}⚠ NATS install function not available${NC}"
+        echo "  Install manually with: tinyclaw nats install"
+    fi
+fi
+
+echo ""
 
 # Ensure the tinyclaw symlink directory is in PATH
 NEED_RESTART=false
