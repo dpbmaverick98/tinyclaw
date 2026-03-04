@@ -10,6 +10,11 @@ NATS_PID_FILE="${TINYCLAW_HOME}/nats.pid"
 NATS_LOG="${LOG_DIR}/nats.log"
 NATS_CONFIG="${TINYCLAW_HOME}/nats.conf"
 
+# Logging helpers — use common.sh log() if available, otherwise echo
+log_info()  { if declare -f log > /dev/null 2>&1; then log "$*"; else echo "$*"; fi; }
+log_error() { if declare -f log > /dev/null 2>&1; then log "ERROR: $*"; else echo "ERROR: $*"; fi; }
+log_warn()  { if declare -f log > /dev/null 2>&1; then log "WARN: $*"; else echo "WARN: $*"; fi; }
+
 # Check if NATS server binary exists
 nats_binary_exists() {
     [ -f "$NATS_BIN" ] && [ -x "$NATS_BIN" ]
@@ -75,12 +80,12 @@ jetstream {
 }
 EOF
     
-    # Start NATS daemon
+    # Start NATS in background (v2 has no --daemon flag; -P writes PID file, -l sets log)
     "$NATS_BIN" \
         -c "$NATS_CONFIG" \
-        --pid_file "$NATS_PID_FILE" \
-        --log_file "$NATS_LOG" \
-        --daemon
+        -P "$NATS_PID_FILE" \
+        -l "$NATS_LOG" &
+    disown $!
     
     # Wait for NATS to be ready
     local retries=0
