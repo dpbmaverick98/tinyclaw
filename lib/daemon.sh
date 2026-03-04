@@ -88,6 +88,16 @@ start_daemon() {
     # Ensure all agent workspaces have .agents/skills symlink
     ensure_agent_skills_links
 
+    # Start NATS server first (required for orchestrator)
+    if ! nats_start; then
+        echo -e "${RED}Failed to start NATS server${NC}"
+        echo "Run 'tinyclaw install-nats' to install NATS binary"
+        return 1
+    fi
+
+    # Wait for NATS to be fully ready
+    sleep 2
+
     # Validate tokens for channels that need them
     for ch in "${ACTIVE_CHANNELS[@]}"; do
         local token_key
@@ -271,8 +281,11 @@ stop_daemon() {
     for ch in "${ALL_CHANNELS[@]}"; do
         pkill -f "$(channel_script "$ch")" || true
     done
-    pkill -f "dist/queue-processor.js" || true
+    pkill -f "dist/orchestrator.js" || true
     pkill -f "heartbeat-cron.sh" || true
+
+    # Stop NATS server
+    nats_stop
 
     echo -e "${GREEN}✓ TinyClaw stopped${NC}"
     log "Daemon stopped"
@@ -302,6 +315,10 @@ restart_daemon() {
 status_daemon() {
     echo -e "${BLUE}TinyClaw Status${NC}"
     echo "==============="
+    echo ""
+
+    # NATS status
+    nats_status
     echo ""
 
     if session_exists; then
@@ -340,10 +357,10 @@ status_daemon() {
     done
 
     # Core processes
-    if pgrep -f "dist/queue-processor.js" > /dev/null; then
-        echo -e "Queue Processor: ${GREEN}Running${NC}"
+    if pgrep -f "dist/orchestrator.js" > /dev/null; then
+        echo -e "Orchestrator:    ${GREEN}Running${NC}"
     else
-        echo -e "Queue Processor: ${RED}Not Running${NC}"
+        echo -e "Orchestrator:    ${RED}Not Running${NC}"
     fi
 
     if pgrep -f "heartbeat-cron.sh" > /dev/null; then

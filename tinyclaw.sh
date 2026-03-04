@@ -36,6 +36,7 @@ source "$SCRIPT_DIR/lib/agents.sh"
 source "$SCRIPT_DIR/lib/teams.sh"
 source "$SCRIPT_DIR/lib/pairing.sh"
 source "$SCRIPT_DIR/lib/update.sh"
+source "$SCRIPT_DIR/lib/nats.sh"
 
 # --- Main command dispatch ---
 
