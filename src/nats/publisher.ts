@@ -1,6 +1,6 @@
 /**
  * NATS Publisher Module
- * 
+ *
  * Functions to publish messages to NATS JetStream.
  * Replaces the SQLite enqueue functions from db.ts
  */
@@ -14,7 +14,7 @@ const jc = getJSONCodec();
 
 /**
  * Publish a user message to an agent's message queue
- * 
+ *
  * @param conversationId - Unique conversation ID
  * @param content - Message content
  * @param firstAgent - Target agent ID
@@ -34,7 +34,7 @@ export async function enqueueUserMessage(
 ): Promise<void> {
   const { js } = getNATS();
   const prefix = getStreamPrefix();
-  
+
   const message: AgentMessage = {
     conversationId,
     from: sender,
@@ -45,14 +45,14 @@ export async function enqueueUserMessage(
     senderId,
     files,
   };
-  
+
   await js.publish(`${prefix}.messages.${firstAgent}`, jc.encode(message));
   log('INFO', `Enqueued message for agent ${firstAgent}`);
 }
 
 /**
  * Publish an internal message (agent-to-agent handoff)
- * 
+ *
  * @param conversationId - Conversation ID
  * @param fromAgent - Source agent ID
  * @param toAgent - Target agent ID
@@ -75,7 +75,7 @@ export async function enqueueInternalMessage(
 ): Promise<void> {
   const { js } = getNATS();
   const prefix = getStreamPrefix();
-  
+
   const agentMessage: AgentMessage = {
     conversationId,
     from: fromAgent,
@@ -90,14 +90,14 @@ export async function enqueueInternalMessage(
     sender: context.sender,
     senderId: context.senderId || undefined,
   };
-  
+
   await js.publish(`${prefix}.messages.${toAgent}`, jc.encode(agentMessage));
   log('INFO', `Enqueued internal message: ${fromAgent} → ${toAgent}`);
 }
 
 /**
  * Publish a final response to be sent to the user
- * 
+ *
  * @param conversationId - Conversation ID
  * @param response - Response data
  */
@@ -108,14 +108,14 @@ export async function publishResponse(
   const { js } = getNATS();
   const prefix = getStreamPrefix();
   const channel = response.channel || 'api';
-  
+
   await js.publish(`${prefix}.responses.${channel}`, jc.encode(response));
   log('INFO', `Published response for conversation ${conversationId}`);
 }
 
 /**
  * Publish an event for UI/real-time updates
- * 
+ *
  * @param eventType - Type of event
  * @param data - Event data
  */
@@ -125,13 +125,13 @@ export async function publishEvent(
 ): Promise<void> {
   const { js } = getNATS();
   const prefix = getStreamPrefix();
-  
+
   const event: EventMessage = {
     type: eventType,
     timestamp: Date.now(),
     data,
   };
-  
+
   await js.publish(`${prefix}.events.${eventType}`, jc.encode(event));
 }
 
@@ -168,12 +168,10 @@ export async function initKV(): Promise<void> {
  * Save conversation state to KV store
  */
 export async function saveConversationState(state: ConversationState): Promise<void> {
-  const { js } = getNATS();
-  
   if (!kvConversations) {
     await initKV();
   }
-  
+
   await kvConversations.put(state.id, jc.encode(state));
 }
 
@@ -181,12 +179,10 @@ export async function saveConversationState(state: ConversationState): Promise<v
  * Get conversation state from KV store
  */
 export async function getConversationState(convId: string): Promise<ConversationState | null> {
-  const { js } = getNATS();
-  
   if (!kvConversations) {
     await initKV();
   }
-  
+
   try {
     const entry = await kvConversations.get(convId);
     if (!entry) return null;
@@ -200,11 +196,9 @@ export async function getConversationState(convId: string): Promise<Conversation
  * Delete conversation state from KV store
  */
 export async function deleteConversationState(convId: string): Promise<void> {
-  const { js } = getNATS();
-  
   if (!kvConversations) {
     await initKV();
   }
-  
+
   await kvConversations.delete(convId);
 }
