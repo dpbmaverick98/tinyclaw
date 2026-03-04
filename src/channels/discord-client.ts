@@ -209,8 +209,11 @@ const client = new Client({
 });
 
 // Client ready
-client.on(Events.ClientReady, (readyClient) => {
+client.on(Events.ClientReady, async (readyClient) => {
     log('INFO', `Discord bot connected as ${readyClient.user.tag}`);
+    // Start NATS consumer after Discord is fully ready
+    await startNATSConsumer();
+    log('INFO', 'Listening for DMs...');
 });
 
 // Message received - Write to queue
@@ -495,10 +498,4 @@ process.on('SIGTERM', () => {
 
 // Start client
 log('INFO', 'Starting Discord client...');
-client.login(DISCORD_BOT_TOKEN).then(async () => {
-    // Start NATS consumer after Discord is ready
-    await startNATSConsumer();
-}).catch((err) => {
-    log('ERROR', `Failed to login: ${err.message}`);
-    process.exit(1);
-});
+client.login(DISCORD_BOT_TOKEN);
