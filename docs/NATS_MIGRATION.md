@@ -73,7 +73,7 @@ Problems:
 - In-memory state lost on restart
 - Single-machine limitation
 
-### After (NATS)
+### After (NATS - Initial Migration)
 
 ```
 Channel Client → API → NATS JetStream → Agent Consumer
@@ -86,7 +86,58 @@ Benefits:
 - Message state persisted in NATS
 - No shared locks needed
 - Can scale to multiple machines
-- CLI-managed, no external dependencies
+
+### After (NATS - Direct Client Connection)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      NATS Server                        │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐ │
+│  │ Messages    │  │ Responses   │  │ Events          │ │
+│  │ (agents)    │  │ (channels)  │  │ (UI)            │ │
+│  └──────┬──────┘  └──────┬──────┘  └─────────────────┘ │
+│         │                │                              │
+└─────────┼────────────────┼──────────────────────────────┘
+          │                │
+    ┌─────┴─────┐    ┌─────┴──────────┐
+    │           │    │                  │
+    ▼           ▼    ▼                  ▼
+┌────────┐ ┌────────┐ ┌──────────┐ ┌──────────┐
+│ Agent  │ │ Agent  │ │ Telegram │ │ Discord  │
+│ Sam    │ │ Wit    │ │ Client   │ │ Client   │
+│(pull)  │ │(pull)  │ │(pull)    │ │(pull)    │
+└────────┘ └────────┘ └──────────┘ └──────────┘
+```
+
+Benefits:
+- **No HTTP polling** - Channel clients connect directly to NATS
+- **Lower latency** - Sub-100ms instead of 1s polling
+- **Better durability** - Messages persist until acknowledged
+- **Horizontal scaling** - Each component can run on separate machines
+- **Simpler code** - No in-memory buffers or HTTP endpoints
+
+## How It Works
+
+### Message Flow (User → Agent)
+
+1. **Channel Client** (Telegram/Discord/WhatsApp) receives user message
+2. **Channel Client** POSTs to `/api/message` (HTTP)
+3. **Orchestrator** receives message, routes to appropriate agent
+4. **Orchestrator** publishes to `tinyclaw.messages.{agentId}` (NATS)
+5. **Agent Consumer** pulls message from NATS, processes with AI
+6. **Agent Consumer** publishes response to `tinyclaw.responses.{channel}` (NATS)
+7. **Channel Client** pulls response from NATS, sends to user
+8. **Channel Client** acknowledges message (removes from NATS)
+
+### Key Difference
+
+| Aspect | Old (HTTP Polling) | New (Direct NATS) |
+|--------|-------------------|-------------------|
+| Response delivery | HTTP poll every 1s | NATS push (immediate) |
+| Buffer | In-memory Map | NATS stream (durable) |
+| Acknowledgment | HTTP POST /ack | NATS msg.ack() |
+| Latency | 1-2 seconds | <100 milliseconds |
+| Durability | Lost on crash | Persisted until ack |
 
 ## File Structure
 
@@ -106,7 +157,7 @@ Benefits:
 
 ## Configuration
 
-NATS is configured automatically. Advanced users can customize via `settings.json`:
+### Settings.json
 
 ```json
 {
@@ -117,10 +168,16 @@ NATS is configured automatically. Advanced users can customize via `settings.jso
 }
 ```
 
-Or use environment variable:
+### Environment Variables
+
+Channel clients read these environment variables:
+
 ```bash
-export NATS_URL=nats://localhost:4222
+export NATS_URL="nats://localhost:4222"        # NATS server URL
+export NATS_STREAM_PREFIX="tinyclaw"           # Stream name prefix
 ```
+
+These are automatically set by `tinyclaw start`.
 
 ## File Changes
 
@@ -131,24 +188,28 @@ export NATS_URL=nats://localhost:4222
 - `src/nats/types.ts` - TypeScript definitions
 - `src/nats/publisher.ts` - Message publishing functions
 - `src/nats/agent-consumer.ts` - Per-agent message consumer
-- `src/nats/response-consumer.ts` - Response delivery consumer
+- `src/nats/client-consumer.ts` - Shared consumer for channel clients
 - `src/nats/index.ts` - Module exports
 - `src/orchestrator.ts` - New main orchestrator (replaces queue-processor)
 
 ### Modified Files
-- `tinyclaw.sh` - Add nats subcommand, source lib/nats.sh
-- `lib/daemon.sh` - Start/stop NATS with daemon
+- `tinyclaw.sh` - Export NATS_URL and NATS_STREAM_PREFIX
+- `lib/daemon.sh` - Pass NATS env vars to channel clients
+- `src/channels/telegram-client.ts` - Connect directly to NATS
+- `src/channels/discord-client.ts` - Connect directly to NATS
+- `src/channels/whatsapp-client.ts` - Connect directly to NATS
 - `scripts/remote-install.sh` - Auto-install NATS
 - `package.json` - Swap `better-sqlite3` for `nats`
 - `src/server/routes/messages.ts` - Use NATS publisher
-- `src/server/routes/queue.ts` - Query NATS consumer info
+- `src/server/routes/queue.ts` - Remove response endpoints
 - `src/server/index.ts` - Remove conversations parameter
 - `src/lib/conversation.ts` - Use NATS instead of SQLite
-- `src/visualizer/team-visualizer.tsx` - Use API instead of SQLite
 
 ### Deleted Files
 - `src/lib/db.ts` - SQLite database operations
 - `src/queue-processor.ts` - SQLite-based orchestrator
+- `src/nats/response-buffer.ts` - In-memory buffer (no longer needed)
+- `src/nats/response-consumer.ts` - HTTP bridge consumer (no longer needed)
 
 ## Verification
 
@@ -215,7 +276,7 @@ Error: listen tcp 0.0.0.0:4222: bind: address already in use
 # Find and kill existing NATS
 pkill nats-server
 # Or use tinyclaw
- tinyclaw nats stop
+tinyclaw nats stop
 ```
 
 ### Stream Already Exists
@@ -235,6 +296,27 @@ Check for errors in logs:
 tinyclaw logs
 tinyclaw nats logs
 ```
+
+### Channel Client Can't Connect to NATS
+
+If channel clients show "NATS connection failed" errors:
+
+1. Check NATS is running:
+   ```bash
+   tinyclaw nats status
+   ```
+
+2. Check environment variables in tmux:
+   ```bash
+   tmux attach -t tinyclaw
+   # In each pane:
+   echo $NATS_URL
+   ```
+
+3. Verify port in settings.json matches NATS_URL:
+   ```bash
+   jq '.nats.port' ~/.tinyclaw/settings.json
+   ```
 
 ## Rollback
 
