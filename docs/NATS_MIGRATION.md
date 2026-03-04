@@ -10,27 +10,51 @@ TinyClaw has migrated from SQLite (`better-sqlite3`) to NATS JetStream for messa
 - **Improves reliability** with durable message streams
 - **Enables horizontal scaling** (agents can run on different machines)
 - **Simplifies architecture** by eliminating manual locks and counters
+- **CLI-managed NATS** - No Docker or manual setup needed
 
-## Prerequisites
+## Quick Start
 
-You need a NATS server with JetStream enabled:
+### New Installation
 
 ```bash
-# Using Docker
-docker run -p 4222:4222 -p 8222:8222 nats:latest -js
+# One-line install (includes NATS server)
+curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
 
-# Or download NATS directly
-curl -sf https://get-nats.io | sh
-./nats-server -js
+# Start TinyClaw (automatically starts NATS)
+tinyclaw start
 ```
 
-## Configuration
-
-Add to your `.env` file:
+### Existing Installation
 
 ```bash
-NATS_URL=nats://localhost:4222
-# Optional: NATS_STREAM_PREFIX=tinyclaw
+# Update to NATS version
+tinyclaw update
+
+# Install NATS binary
+tinyclaw nats install
+
+# Start TinyClaw
+tinyclaw start
+```
+
+## NATS CLI Commands
+
+TinyClaw now manages NATS directly through the CLI:
+
+```bash
+# NATS management
+tinyclaw nats start      # Start NATS server
+tinyclaw nats stop       # Stop NATS server
+tinyclaw nats status     # Show NATS status
+tinyclaw nats logs 100   # Show last 100 log lines
+tinyclaw nats logs -f    # Follow logs in real-time
+tinyclaw nats install    # Download and install NATS binary
+
+# TinyClaw (includes NATS)
+tinyclaw start           # Starts NATS → orchestrator → channels
+tinyclaw stop            # Stops everything including NATS
+tinyclaw status          # Shows NATS + all process status
+tinyclaw restart         # Full restart including NATS
 ```
 
 ## Architecture Changes
@@ -62,10 +86,46 @@ Benefits:
 - Message state persisted in NATS
 - No shared locks needed
 - Can scale to multiple machines
+- CLI-managed, no external dependencies
+
+## File Structure
+
+```
+~/.tinyclaw/
+├── bin/
+│   └── nats-server          # NATS binary (auto-installed)
+├── nats/                    # NATS data directory
+├── nats.conf                # NATS config (auto-generated)
+├── nats.pid                 # PID file
+├── logs/
+│   ├── nats.log            # NATS logs
+│   ├── orchestrator.log    # Orchestrator logs
+│   └── [channel].log       # Channel logs
+└── settings.json           # TinyClaw settings
+```
+
+## Configuration
+
+NATS is configured automatically. Advanced users can customize via `settings.json`:
+
+```json
+{
+  "nats": {
+    "port": 4222,
+    "http_port": 8222
+  }
+}
+```
+
+Or use environment variable:
+```bash
+export NATS_URL=nats://localhost:4222
+```
 
 ## File Changes
 
 ### New Files
+- `lib/nats.sh` - NATS lifecycle management for CLI
 - `src/nats/connection.ts` - NATS connection management
 - `src/nats/streams.ts` - JetStream stream setup
 - `src/nats/types.ts` - TypeScript definitions
@@ -76,6 +136,9 @@ Benefits:
 - `src/orchestrator.ts` - New main orchestrator (replaces queue-processor)
 
 ### Modified Files
+- `tinyclaw.sh` - Add nats subcommand, source lib/nats.sh
+- `lib/daemon.sh` - Start/stop NATS with daemon
+- `scripts/remote-install.sh` - Auto-install NATS
 - `package.json` - Swap `better-sqlite3` for `nats`
 - `src/server/routes/messages.ts` - Use NATS publisher
 - `src/server/routes/queue.ts` - Query NATS consumer info
@@ -87,34 +150,16 @@ Benefits:
 - `src/lib/db.ts` - SQLite database operations
 - `src/queue-processor.ts` - SQLite-based orchestrator
 
-## Migration Steps for Users
-
-1. **Install NATS server** (see Prerequisites above)
-
-2. **Update environment**:
-   ```bash
-   # Add to .env
-   NATS_URL=nats://localhost:4222
-   ```
-
-3. **Reinstall dependencies**:
-   ```bash
-   npm install
-   ```
-
-4. **Start TinyClaw**:
-   ```bash
-   ./tinyclaw.sh start
-   # or
-   npm run orchestrator
-   ```
-
 ## Verification
 
-Check that NATS streams are created:
-
+Check NATS status:
 ```bash
-# Using NATS CLI
+tinyclaw nats status
+```
+
+Check that NATS streams are created:
+```bash
+# Using NATS CLI (if installed separately)
 nats stream ls
 
 # Should show:
@@ -124,12 +169,28 @@ nats stream ls
 ```
 
 Check queue status via API:
-
 ```bash
 curl http://localhost:3777/api/queue/status
 ```
 
+View NATS logs:
+```bash
+tinyclaw nats logs -f
+```
+
 ## Troubleshooting
+
+### NATS Not Starting
+
+```
+Failed to start NATS server
+Run 'tinyclaw install-nats' to install NATS binary
+```
+
+**Solution**: Install NATS binary:
+```bash
+tinyclaw nats install
+```
 
 ### NATS Connection Failed
 
@@ -137,9 +198,24 @@ curl http://localhost:3777/api/queue/status
 ERROR: NATS connection failed: Error: connect ECONNREFUSED 127.0.0.1:4222
 ```
 
-**Solution**: Start NATS server:
+**Solution**: Check NATS status and start if needed:
 ```bash
-docker run -p 4222:4222 nats:latest -js
+tinyclaw nats status
+tinyclaw nats start
+```
+
+### Port Already in Use
+
+```
+Error: listen tcp 0.0.0.0:4222: bind: address already in use
+```
+
+**Solution**: Another NATS instance is running. Stop it:
+```bash
+# Find and kill existing NATS
+pkill nats-server
+# Or use tinyclaw
+ tinyclaw nats stop
 ```
 
 ### Stream Already Exists
@@ -150,28 +226,41 @@ This is normal - streams are created once and reused.
 
 Check agent consumers:
 ```bash
+# If you have NATS CLI installed
 nats consumer ls tinyclaw_MESSAGES
 ```
 
 Check for errors in logs:
 ```bash
-./tinyclaw.sh logs
+tinyclaw logs
+tinyclaw nats logs
 ```
 
 ## Rollback
 
 To rollback to SQLite version:
 
-1. Checkout pre-NATS commit
-2. Restore `tinyclaw.db` from backup
-3. Restart TinyClaw
+1. Stop TinyClaw:
+   ```bash
+   tinyclaw stop
+   ```
+
+2. Checkout pre-NATS commit
+
+3. Restore `tinyclaw.db` from backup if available
+
+4. Restart TinyClaw:
+   ```bash
+   tinyclaw start
+   ```
 
 ## Performance Considerations
 
 - **Message throughput**: NATS can handle millions of messages/sec
 - **Memory usage**: NATS uses ~50MB base + stream storage
-- **Disk usage**: JetStream persists to disk (configurable)
+- **Disk usage**: JetStream persists to disk (configurable, default 10GB)
 - **Latency**: Sub-millisecond for local NATS
+- **Ports used**: 4222 (client), 8222 (HTTP monitoring)
 
 ## Further Reading
 

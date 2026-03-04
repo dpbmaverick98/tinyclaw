@@ -56,25 +56,21 @@ We are actively looking for contributors. Please reach out.
 
 ### Quick Start with NATS
 
-TinyClaw uses NATS JetStream for reliable message queuing. Start NATS first:
+TinyClaw uses NATS JetStream for reliable message queuing. The CLI automatically manages NATS:
 
 ```bash
-# Using Docker
-docker run -d --name nats -p 4222:4222 -p 8222:8222 nats:latest -js
+# One-line install (includes NATS server)
+curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
 
-# Or with NATS CLI
-nats-server -js
+# Start TinyClaw (automatically starts NATS + orchestrator + channels)
+tinyclaw start
 ```
 
-Then install and run TinyClaw:
+### Installation
 
 **Option 1: One-line Install (Recommended)**
 
 ```bash
-# 1. Start NATS server (if not already running)
-docker run -d --name nats -p 4222:4222 nats:latest -js
-
-# 2. Install TinyClaw
 curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
 ```
 
@@ -96,7 +92,7 @@ cd tinyclaw && npm install && ./scripts/install.sh
 ### First Run
 
 ```bash
-tinyclaw start  # Runs interactive setup wizard
+tinyclaw start  # Starts NATS → Orchestrator → Channels
 ```
 
 The setup wizard will guide you through:
