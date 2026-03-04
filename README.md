@@ -379,50 +379,63 @@ See [docs/AGENTS.md](docs/AGENTS.md) for:
 │                     Message Channels                         │
 │         (Discord, Telegram, WhatsApp, Web, API)             │
 └────────────────────┬────────────────────────────────────────┘
-                     │ enqueueMessage()
-                     ↓
+                     │
+        ┌────────────┼────────────┐
+        │            │            │
+        ▼            ▼            ▼
+┌──────────┐  ┌──────────┐  ┌──────────┐
+│ Telegram │  │ Discord  │  │ WhatsApp │
+│ Client   │  │ Client   │  │ Client   │
+│ (NATS)   │  │ (NATS)   │  │ (NATS)   │
+└────┬─────┘  └────┬─────┘  └────┬─────┘
+     │             │             │
+     └─────────────┼─────────────┘
+                   │
+                   ▼
 ┌─────────────────────────────────────────────────────────────┐
-│               ~/.tinyclaw/tinyclaw.db (SQLite)               │
+│                    NATS JetStream                            │
 │                                                              │
-│  messages: pending → processing → completed / dead          │
-│  responses: pending → acked                                  │
-│                                                              │
-└────────────────────┬────────────────────────────────────────┘
-                     │ Queue Processor
-                     ↓
-┌─────────────────────────────────────────────────────────────┐
-│              Parallel Processing by Agent                    │
-│                                                              │
-│  Agent: coder        Agent: writer       Agent: assistant   │
-│  ┌──────────┐       ┌──────────┐        ┌──────────┐       │
-│  │ Message 1│       │ Message 1│        │ Message 1│       │
-│  │ Message 2│ ...   │ Message 2│  ...   │ Message 2│ ...   │
-│  │ Message 3│       │          │        │          │       │
-│  └────┬─────┘       └────┬─────┘        └────┬─────┘       │
-│       │                  │                     │            │
-└───────┼──────────────────┼─────────────────────┼────────────┘
-        ↓                  ↓                     ↓
-   claude CLI         claude CLI             claude CLI
-  (workspace/coder)  (workspace/writer)  (workspace/assistant)
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │ Messages    │  │ Responses   │  │ Events              │  │
+│  │ Stream      │  │ Stream      │  │ Stream              │  │
+│  │ (agents)    │  │ (channels)  │  │ (UI/heartbeat)      │  │
+│  └──────┬──────┘  └──────┬──────┘  └─────────────────────┘  │
+│         │                │                                   │
+└─────────┼────────────────┼───────────────────────────────────┘
+          │                │
+    ┌─────┴─────┐    ┌─────┴──────────┐
+    │           │    │                  │
+    ▼           ▼    ▼                  ▼
+┌────────┐ ┌────────┐ ┌──────────┐ ┌──────────┐
+│ Agent  │ │ Agent  │ │ Telegram │ │ Discord  │
+│ Sam    │ │ Wit    │ │ Client   │ │ Client   │
+│(pull)  │ │(pull)  │ │(pull)    │ │(pull)    │
+└────┬───┘ └────┬───┘ └────┬─────┘ └────┬─────┘
+     │          │          │            │
+     ▼          ▼          ▼            ▼
+  claude CLI  claude CLI  Send to     Send to
+ (workspace) (workspace)  Telegram    Discord
 ```
 
 **Key features:**
 
-- **SQLite queue** - Atomic transactions via WAL mode, no race conditions
-- **Parallel agents** - Different agents process messages concurrently
-- **Sequential per agent** - Preserves conversation order within each agent
-- **Retry & dead-letter** - Failed messages retry up to 5 times, then enter dead-letter queue
+- **NATS JetStream** - Durable message queues with automatic redelivery
+- **Direct client connections** - Channel clients consume directly from NATS (no HTTP polling)
+- **Parallel agents** - Different agents process messages concurrently via durable consumers
+- **Sequential per agent** - Each agent's consumer processes messages in order
+- **Automatic retry** - NATS handles retries with exponential backoff
 - **Isolated workspaces** - Each agent has its own directory and context
+- **Horizontal scaling** - Components can run on different machines
 
 <details>
-<summary><b>📖 Learn more about the queue system</b></summary>
+<summary><b>📖 Learn more about the NATS architecture</b></summary>
 
-See [docs/QUEUE.md](docs/QUEUE.md) for:
+See [docs/NATS_MIGRATION.md](docs/NATS_MIGRATION.md) for:
 
 - Detailed message flow
-- Parallel processing explanation
-- Performance characteristics
-- Debugging tips
+- Architecture changes from SQLite
+- Environment variables
+- Troubleshooting
 
 </details>
 

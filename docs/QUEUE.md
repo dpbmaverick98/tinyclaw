@@ -1,299 +1,270 @@
 # Queue System
 
-TinyClaw uses a SQLite-backed queue (`tinyclaw.db`) to coordinate message processing across multiple channels and agents. Messages are stored in a `messages` table (incoming) and `responses` table (outgoing), with atomic transactions replacing the previous file-based approach.
+TinyClaw uses **NATS JetStream** for message queuing. Messages flow through durable streams that persist until acknowledged, enabling reliable delivery across multiple channels and agents.
 
 ## Overview
 
 The queue system acts as a central coordinator between:
-- **Channel clients** (Discord, Telegram, WhatsApp) - produce messages
-- **Queue processor** - routes and processes messages
+- **Channel clients** (Discord, Telegram, WhatsApp) - produce messages via HTTP, consume responses via NATS
+- **Orchestrator** - routes messages to appropriate agents
+- **Agent consumers** - pull messages from NATS, process with AI
 - **AI providers** (Claude, Codex) - generate responses
-- **Agents** - isolated AI agents with different configs
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     Message Channels                         │
 │         (Discord, Telegram, WhatsApp, Heartbeat)            │
 └────────────────────┬────────────────────────────────────────┘
-                     │ enqueueMessage()
+                     │ POST /api/message
                      ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                   ~/.tinyclaw/tinyclaw.db                     │
+│                    NATS JetStream                            │
 │                                                              │
-│  messages table                    responses table           │
-│  status: pending → processing →   status: pending → acked   │
-│          completed / dead                                    │
-│                                                              │
-└────────────────────┬────────────────────────────────────────┘
-                     │ Queue Processor
-                     ↓
-┌─────────────────────────────────────────────────────────────┐
-│              Parallel Processing by Agent                    │
-│                                                              │
-│  Agent: coder        Agent: writer       Agent: assistant   │
-│  ┌──────────┐       ┌──────────┐        ┌──────────┐       │
-│  │ Message 1│       │ Message 1│        │ Message 1│       │
-│  │ Message 2│ ...   │ Message 2│  ...   │ Message 2│ ...   │
-│  │ Message 3│       │          │        │          │       │
-│  └────┬─────┘       └────┬─────┘        └────┬─────┘       │
-│       │                  │                     │            │
-└───────┼──────────────────┼─────────────────────┼────────────┘
-        ↓                  ↓                     ↓
-   claude CLI         claude CLI             claude CLI
-  (workspace/coder)  (workspace/writer)  (workspace/assistant)
+│  ┌─────────────────┐  ┌─────────────────┐                   │
+│  │ Messages Stream │  │ Responses Stream│                   │
+│  │ (per-agent)     │  │ (per-channel)   │                   │
+│  │                 │  │                 │                   │
+│  │ tinyclaw.       │  │ tinyclaw.       │                   │
+│  │ messages.sam    │  │ responses.telegram                 │
+│  │ messages.wit    │  │ responses.discord                  │
+│  │ ...             │  │ ...             │                   │
+│  └────────┬────────┘  └────────┬────────┘                   │
+│           │                    │                             │
+└───────────┼────────────────────┼─────────────────────────────┘
+            │                    │
+    ┌───────┴───────┐    ┌───────┴──────────┐
+    │               │    │                    │
+    ▼               ▼    ▼                    ▼
+┌────────┐   ┌────────┐  ┌──────────┐  ┌──────────┐
+│ Agent  │   │ Agent  │  │ Telegram │  │ Discord  │
+│ Sam    │   │ Wit    │  │ Client   │  │ Client   │
+│(pull)  │   │(pull)  │  │(pull)    │  │(pull)    │
+└────┬───┘   └────┬───┘  └────┬─────┘  └────┬─────┘
+     │            │           │             │
+     ▼            ▼           ▼             ▼
+  Publish     Publish     Send to       Send to
+  response    response    Telegram      Discord
 ```
-
-## Database Schema
-
-The queue lives in `~/.tinyclaw/tinyclaw.db` (SQLite, WAL mode):
-
-### Messages Table (incoming queue)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | INTEGER | Auto-incrementing primary key |
-| `message_id` | TEXT | Unique message identifier |
-| `channel` | TEXT | Source channel (discord, telegram, web, etc.) |
-| `sender` | TEXT | Sender display name |
-| `sender_id` | TEXT | Sender platform ID |
-| `message` | TEXT | Message content |
-| `agent` | TEXT | Target agent (null = default) |
-| `files` | TEXT | JSON array of file paths |
-| `conversation_id` | TEXT | Team conversation ID (internal messages) |
-| `from_agent` | TEXT | Source agent (internal messages) |
-| `status` | TEXT | `pending` → `processing` → `completed` / `dead` |
-| `retry_count` | INTEGER | Number of failed attempts |
-| `last_error` | TEXT | Last error message |
-| `claimed_by` | TEXT | Agent that claimed this message |
-| `created_at` | INTEGER | Timestamp (ms) |
-| `updated_at` | INTEGER | Timestamp (ms) |
-
-### Responses Table (outgoing queue)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | INTEGER | Auto-incrementing primary key |
-| `message_id` | TEXT | Original message ID |
-| `channel` | TEXT | Target channel for delivery |
-| `sender` | TEXT | Original sender |
-| `message` | TEXT | Response content |
-| `original_message` | TEXT | Original user message |
-| `agent` | TEXT | Agent that generated the response |
-| `files` | TEXT | JSON array of file paths |
-| `status` | TEXT | `pending` → `acked` |
-| `created_at` | INTEGER | Timestamp (ms) |
-| `acked_at` | INTEGER | Timestamp when channel client acknowledged |
 
 ## Message Flow
 
-### 1. Incoming Message
+### 1. Incoming Message (User → Agent)
 
-A channel client receives a message and enqueues it:
-
-```typescript
-enqueueMessage({
-    channel: 'discord',
-    sender: 'Alice',
-    senderId: 'user_12345',
-    message: '@coder fix the authentication bug',
-    messageId: 'discord_msg_123',
-    files: ['/path/to/screenshot.png'],
-});
+```
+User sends message
+       ↓
+Channel Client (Telegram/Discord/WhatsApp)
+       ↓
+POST /api/message (HTTP)
+       ↓
+Orchestrator receives message
+       ↓
+Route to appropriate agent
+       ↓
+Publish to tinyclaw.messages.{agentId} (NATS)
+       ↓
+Agent Consumer pulls message
+       ↓
+Process with AI (claude CLI)
+       ↓
+Publish response to tinyclaw.responses.{channel} (NATS)
+       ↓
+Channel Client pulls response
+       ↓
+Send to user
+       ↓
+Acknowledge message (removes from NATS)
 ```
 
-This inserts a row into `messages` with `status = 'pending'` and emits a
-`message:enqueued` event for instant pickup.
+### 2. Key Differences from SQLite
 
-### 2. Processing
+| Aspect | SQLite (Old) | NATS JetStream (New) |
+|--------|-------------|---------------------|
+| Storage | Local SQLite file | NATS server (can be remote) |
+| Durability | Disk persistence | Stream persistence + replication |
+| Concurrency | File locks | Durable consumers |
+| Response delivery | HTTP polling (1s) | NATS push (immediate) |
+| Retry logic | Manual (5 attempts) | Automatic with backoff |
+| Dead letter | Manual queue | Automatic redelivery |
+| Scaling | Single machine | Multi-machine capable |
 
-The queue processor picks up messages via two mechanisms:
+## NATS Streams
 
-- **Event-driven**: `queueEvents.on('message:enqueued')` — instant for in-process messages
-- **Polling fallback**: Every 500ms — catches cross-process messages from channel clients
+### Messages Stream
 
-For each pending agent, the processor calls `claimNextMessage(agentId)`:
+Incoming messages for agents:
+- **Subject**: `tinyclaw.messages.{agentId}`
+- **Retention**: 24 hours or 10,000 messages
+- **Consumers**: One durable consumer per agent
+- **Ordering**: Sequential per agent (preserves conversation order)
 
-```typescript
-// Atomic claim using BEGIN IMMEDIATE transaction
-const msg = claimNextMessage('coder');
-// Sets status = 'processing', claimed_by = 'coder'
+### Responses Stream
+
+Outgoing responses to channels:
+- **Subject**: `tinyclaw.responses.{channel}`
+- **Retention**: 1 hour or 1,000 messages
+- **Consumers**: One durable consumer per channel client
+- **Ordering**: Sequential per channel
+
+### Events Stream
+
+Real-time events for UI/heartbeat:
+- **Subject**: `tinyclaw.events.{type}`
+- **Retention**: 24 hours or 5,000 messages (memory only)
+- **Usage**: UI updates, monitoring, logging
+
+## Configuration
+
+### Environment Variables
+
+Channel clients and the orchestrator read these environment variables:
+
+```bash
+export NATS_URL="nats://localhost:4222"        # NATS server URL
+export NATS_STREAM_PREFIX="tinyclaw"           # Stream name prefix
 ```
 
-This prevents race conditions — only one processor can claim a message.
+These are automatically set by `tinyclaw start` based on `settings.json`.
 
-### 3. Agent Processing
+### Settings.json
 
-Each agent has its own promise chain for sequential processing:
-
-```typescript
-// Messages to same agent = sequential (preserve conversation order)
-agentChain: msg1 → msg2 → msg3
-
-// Different agents = parallel (don't block each other)
-@coder:     msg1 ──┐
-@writer:    msg1 ──┼─→ All run concurrently
-@assistant: msg1 ──┘
-```
-
-### 4. Response
-
-After the AI responds, the processor writes to the responses table:
-
-```typescript
-enqueueResponse({
-    channel: 'discord',
-    sender: 'Alice',
-    message: "I've identified the issue in auth.ts:42...",
-    originalMessage: '@coder fix the authentication bug',
-    messageId: 'discord_msg_123',
-    agent: 'coder',
-    files: ['/path/to/fix.patch'],
-});
-```
-
-The original message is marked `status = 'completed'`.
-
-### 5. Channel Delivery
-
-Channel clients poll for responses:
-
-```typescript
-const responses = getResponsesForChannel('discord');
-for (const response of responses) {
-    await sendToUser(response);
-    ackResponse(response.id);  // marks status = 'acked'
+```json
+{
+  "nats": {
+    "port": 4222,
+    "http_port": 8222
+  }
 }
 ```
 
-## Error Handling & Retry
+## Consumer Behavior
 
-### Retry Logic
+### Agent Consumers
 
-When processing fails, `failMessage()` increments `retry_count`:
+Each agent has a **durable pull consumer**:
+- **Durable name**: `agent-{agentId}`
+- **Max ack pending**: 1 (sequential processing)
+- **Ack wait**: 5 minutes
+- **Deliver policy**: All (process from beginning if new)
 
-```
-Attempt 1: fails → retry_count = 1, status = 'pending'
-Attempt 2: fails → retry_count = 2, status = 'pending'
-...
-Attempt 5: fails → retry_count = 5, status = 'dead'
-```
+### Channel Consumers
 
-Messages that exhaust retries (default: 5) are marked `status = 'dead'`.
+Each channel client has a **durable pull consumer**:
+- **Durable name**: `responses-{channel}`
+- **Max ack pending**: 10 (allows some parallelism)
+- **Ack wait**: 30 seconds
+- **Ack policy**: Explicit (must ack after successful delivery)
 
-### Dead-Letter Management
+## Acknowledgment
 
-Dead messages can be inspected and managed via the API:
-
-```
-GET    /api/queue/dead           → list dead messages
-POST   /api/queue/dead/:id/retry → reset retry count, re-queue
-DELETE /api/queue/dead/:id       → permanently delete
-```
-
-### Stale Message Recovery
-
-Messages stuck in `processing` (e.g., from a crash) are automatically
-recovered every 5 minutes:
+Messages are removed from NATS only after explicit acknowledgment:
 
 ```typescript
-recoverStaleMessages(10 * 60 * 1000);  // anything processing > 10 min
+// Successful delivery
+await sendToUser(response);
+msg.ack();  // Removes from NATS
+
+// Failed delivery
+msg.nak();  // Redelivers later
 ```
 
-## Parallel Processing
+This guarantees **at-least-once delivery** - messages are retried until successfully processed.
 
-### How It Works
+## Monitoring
 
-Each agent has its own **promise chain** that processes messages sequentially:
-
-```typescript
-const agentProcessingChains = new Map<string, Promise<void>>();
-```
-
-**Example: 3 messages sent simultaneously**
-
-```
-@coder fix bug 1     [████████████████] 30s
-@writer docs         [██████████] 20s ← concurrent!
-@assistant help      [████████] 15s   ← concurrent!
-Total: 30 seconds (2.2x faster vs 65s sequential)
-```
-
-Messages to the **same agent** remain sequential:
-
-```
-@coder fix bug 1     [████] 10s
-@coder fix bug 2             [████] 10s  ← waits for bug 1
-@writer docs         [██████] 15s        ← parallel with both
-```
-
-## Real-Time Events
-
-The queue processor emits events via an in-memory listener system. The API
-server broadcasts these over SSE at `GET /api/events/stream`.
-
-| Event | Description |
-|-------|-------------|
-| `message_received` | New message picked up |
-| `agent_routed` | Message routed to agent |
-| `chain_step_start` | Agent begins processing |
-| `chain_step_done` | Agent finished (includes response) |
-| `response_ready` | Response enqueued for delivery |
-| `processor_start` | Queue processor started |
-
-The TUI visualizer and web dashboard both consume SSE for live updates.
-
-## API Endpoints
-
-The API server runs on port 3777 (configurable via `TINYCLAW_API_PORT`):
-
-| Endpoint | Description |
-|----------|-------------|
-| `POST /api/message` | Enqueue a message |
-| `GET /api/queue/status` | Queue depth (pending, processing, dead) |
-| `GET /api/responses` | Recent responses |
-| `GET /api/queue/dead` | Dead messages |
-| `POST /api/queue/dead/:id/retry` | Retry a dead message |
-| `DELETE /api/queue/dead/:id` | Delete a dead message |
-| `GET /api/events/stream` | SSE event stream |
-
-## Maintenance
-
-Periodic cleanup tasks run automatically:
-
-- **Stale message recovery**: Every 5 minutes (messages stuck in `processing` > 10 min)
-- **Acked response pruning**: Every hour (responses acked > 24h ago)
-- **Conversation TTL**: Every 30 minutes (team conversations older than 30 min)
-
-## Debugging
-
-### Check Queue Status
+### Check Stream Status
 
 ```bash
-# Via API
-curl http://localhost:3777/api/queue/status | jq
+# Using tinyclaw CLI
+tinyclaw status
 
-# View queue logs
-tinyclaw logs queue
+# Check NATS specifically
+tinyclaw nats status
 ```
 
-### Common Issues
+### View Stream Info (with NATS CLI)
 
-**Messages not processing:**
-- Queue processor not running → `tinyclaw status`
-- Check logs → `tinyclaw logs queue`
+```bash
+# List streams
+nats stream ls
 
-**Messages stuck in processing:**
-- Will auto-recover after 10 minutes
-- Or restart: `tinyclaw restart`
+# Stream info
+nats stream info tinyclaw_MESSAGES
+nats stream info tinyclaw_RESPONSES
 
-**Dead messages accumulating:**
-- Check via API: `curl http://localhost:3777/api/queue/dead | jq`
-- Retry: `curl -X POST http://localhost:3777/api/queue/dead/123/retry`
+# Consumer info
+nats consumer ls tinyclaw_MESSAGES
+nats consumer info tinyclaw_MESSAGES agent-sam
+```
 
-## See Also
+### Logs
 
-- [AGENTS.md](AGENTS.md) - Agent configuration and management
-- [TEAMS.md](TEAMS.md) - Team collaboration and message passing
-- [README.md](../README.md) - Main project documentation
-- [src/lib/queue-db.ts](../src/lib/queue-db.ts) - Queue implementation
-- [src/queue-processor.ts](../src/queue-processor.ts) - Processing logic
+```bash
+# NATS logs
+tinyclaw nats logs -f
+
+# Channel logs
+tail -f ~/.tinyclaw/logs/telegram.log
+tail -f ~/.tinyclaw/logs/discord.log
+```
+
+## Troubleshooting
+
+### Messages Not Being Processed
+
+1. Check NATS is running:
+   ```bash
+   tinyclaw nats status
+   ```
+
+2. Check agent consumers exist:
+   ```bash
+   nats consumer ls tinyclaw_MESSAGES
+   ```
+
+3. Check for errors in logs:
+   ```bash
+   tinyclaw logs
+   ```
+
+### Messages Stuck in Queue
+
+If messages aren't being acknowledged:
+
+1. Check agent is running:
+   ```bash
+   tinyclaw status
+   ```
+
+2. Check agent logs for errors:
+   ```bash
+   tail -f ~/.tinyclaw/logs/orchestrator.log
+   ```
+
+3. Consumer might be stuck - restart orchestrator:
+   ```bash
+   tinyclaw restart
+   ```
+
+### High Memory Usage
+
+NATS JetStream keeps messages in memory + disk:
+
+- **Messages stream**: Max 10,000 messages or 24 hours
+- **Responses stream**: Max 1,000 messages or 1 hour
+- **Events stream**: Max 5,000 messages or 24 hours (memory only)
+
+Old messages are automatically purged.
+
+## Performance
+
+- **Throughput**: Millions of messages/second (NATS capability)
+- **Latency**: Sub-millisecond for local NATS
+- **Response time**: <100ms (vs 1-2s with HTTP polling)
+- **Memory**: ~50MB base + stream storage
+
+## Further Reading
+
+- [NATS Documentation](https://docs.nats.io/)
+- [JetStream Concepts](https://docs.nats.io/nats-concepts/jetstream)
+- [NATS Migration Guide](NATS_MIGRATION.md)
