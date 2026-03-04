@@ -100,7 +100,7 @@ start_daemon() {
     nats_port=$(jq -r '.nats.port // "4222"' "$SETTINGS_FILE" 2>/dev/null || echo "4222")
     local _i
     for _i in $(seq 1 20); do
-        if (echo >/dev/tcp/127.0.0.1/"$nats_port") 2>/dev/null; then
+        if (</dev/tcp/127.0.0.1/"$nats_port") 2>/dev/null; then
             break
         fi
         sleep 0.5

@@ -133,5 +133,7 @@ export function parseAgentRouting(
             }
         }
     }
-    return { agentId: 'default', message: rawMessage };
+    // Fall back to first configured agent
+    const firstAgentId = Object.keys(agents)[0] || 'default';
+    return { agentId: firstAgentId, message: rawMessage };
 }

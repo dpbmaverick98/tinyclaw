@@ -110,7 +110,6 @@ export async function getRecentResponses(
     // Ordered consumer = ephemeral, auto-managed, no ack needed
     const consumer = await js.consumers.get(streamName, {
       filterSubjects: [`${prefix}.responses.${channel}`],
-      deliver_policy: DeliverPolicy.All,
     });
 
     const messages = await consumer.fetch({ max_messages: limit, expires: 1000 });
