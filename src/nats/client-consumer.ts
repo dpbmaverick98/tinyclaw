@@ -67,7 +67,9 @@ export async function connectAndConsume(
     nak: () => void
   ) => Promise<void>
 ): Promise<{ stop: () => void }> {
-  const url = process.env.NATS_URL || 'nats://localhost:4222';
+  // Normalize URL: ensure nats:// scheme is present
+  const rawUrl = process.env.NATS_URL || 'localhost:4222';
+  const url = rawUrl.includes('://') ? rawUrl : `nats://${rawUrl}`;
   const prefix = process.env.NATS_STREAM_PREFIX || 'tinyclaw';
   const streamName = `${prefix}_RESPONSES`;
   const subject = `${prefix}.responses.${channel}`;
@@ -202,6 +204,11 @@ async function createConsumer(
 
 /**
  * Run the consume loop
+ *
+ * Note: This function is fire-and-forget. It runs indefinitely until
+ * the consumer is stopped or an unrecoverable error occurs. Errors are
+ * handled internally - the loop will continue processing messages even
+ * after individual message errors (those trigger msg.nak()).
  */
 async function runConsumeLoop(
   channel: string,
