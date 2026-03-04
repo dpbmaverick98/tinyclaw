@@ -154,7 +154,7 @@ async function processAgentMessage(
       agent,
       agentId,
       hookedPrompt,
-      agent.working_directory || `${workspacePath}/${agentId}`,
+      workspacePath,
       false, // shouldReset
       agents,
       teams
