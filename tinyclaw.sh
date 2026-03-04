@@ -30,7 +30,8 @@ mkdir -p "$LOG_DIR"
 
 # Export NATS configuration for channel clients
 # Channel clients now connect directly to NATS (nats-client-side architecture)
-export NATS_URL="${NATS_URL:-nats://localhost:4222}"
+_nats_port=$(jq -r '.nats.port // "4222"' "$SETTINGS_FILE" 2>/dev/null || echo "4222")
+export NATS_URL="${NATS_URL:-nats://localhost:${_nats_port}}"
 export NATS_STREAM_PREFIX="${NATS_STREAM_PREFIX:-tinyclaw}"
 
 # Source library files
