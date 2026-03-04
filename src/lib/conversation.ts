@@ -3,8 +3,8 @@ import path from 'path';
 import { Conversation } from './types';
 import { CHATS_DIR, getSettings, getAgents } from './config';
 import { log, emitEvent } from './logging';
-import { enqueueMessage, enqueueResponse } from './db';
 import { handleLongResponse, collectFiles } from './response';
+import { enqueueInternalMessage as natsEnqueueInternalMessage, publishResponse as natsPublishResponse } from '../nats/publisher';
 
 // Active conversations — tracks in-flight team message passing
 export const conversations = new Map<string, Conversation>();
@@ -73,7 +73,8 @@ export function decrementPending(conv: Conversation): boolean {
 }
 
 /**
- * Enqueue an internal (agent-to-agent) message into the SQLite queue.
+ * Enqueue an internal (agent-to-agent) message via NATS.
+ * Note: This is a compatibility wrapper - agent-consumer now handles this directly.
  */
 export function enqueueInternalMessage(
     conversationId: string,
@@ -82,18 +83,9 @@ export function enqueueInternalMessage(
     message: string,
     originalData: { channel: string; sender: string; senderId?: string | null; messageId: string }
 ): void {
-    const messageId = `internal_${conversationId}_${targetAgent}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    enqueueMessage({
-        channel: originalData.channel,
-        sender: originalData.sender,
-        senderId: originalData.senderId ?? undefined,
-        message,
-        messageId,
-        agent: targetAgent,
-        conversationId,
-        fromAgent,
-    });
-    log('INFO', `Enqueued internal message: @${fromAgent} → @${targetAgent}`);
+    // This function is kept for compatibility but the actual enqueue
+    // now happens in agent-consumer.ts via NATS
+    log('INFO', `Internal message requested: @${fromAgent} → @${targetAgent} (handled by NATS)`);
 }
 
 /**
@@ -174,13 +166,15 @@ export function completeConversation(conv: Conversation): void {
     // Handle long responses — send as file attachment
     const { message: responseMessage, files: allFiles } = handleLongResponse(finalResponse, outboundFiles);
 
-    // Write to outgoing queue
-    enqueueResponse({
+    // Publish response via NATS
+    natsPublishResponse(conv.id, {
+        conversationId: conv.id,
+        response: responseMessage,
+        history: conv.responses.map(r => ({ role: 'agent' as const, agentId: r.agentId, content: r.response, timestamp: Date.now() })),
+        agentId: conv.responses[conv.responses.length - 1]?.agentId || 'unknown',
         channel: conv.channel,
         sender: conv.sender,
-        message: responseMessage,
-        originalMessage: conv.originalMessage,
-        messageId: conv.messageId,
+        senderId: conv.senderId,
         files: allFiles.length > 0 ? allFiles : undefined,
     });
 
