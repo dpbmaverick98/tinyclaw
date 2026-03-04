@@ -218,11 +218,13 @@ export async function atomicConvUpdate(
     await initKV();
   }
 
-  for (let attempt = 0; attempt < 5; attempt++) {
+  // CAS loop with exponential backoff + jitter to avoid lockstep retries
+  for (let attempt = 0; attempt < 10; attempt++) {
     const entry = await kvConversations.get(convId);
     if (!entry) return null;
 
-    const state = jc.decode(entry.value) as ConversationState;
+    // Clone to avoid mutating the decoded object
+    const state: ConversationState = JSON.parse(JSON.stringify(jc.decode(entry.value)));
     state.responses.push({ agentId, response });
     state.pending += pendingDelta;
     state.totalMessages++;
@@ -235,24 +237,20 @@ export async function atomicConvUpdate(
     } catch (err) {
       const msg = (err as Error).message || '';
       if (msg.includes('wrong last sequence')) {
-        continue; // Conflict — another agent wrote first, retry
+        // Exponential backoff with jitter: 10-20ms, 20-40ms, 40-80ms, ...
+        const baseDelay = 10 * Math.pow(2, attempt);
+        const jitter = Math.random() * baseDelay;
+        await new Promise(r => setTimeout(r, baseDelay + jitter));
+        continue;
       }
       throw err;
     }
   }
 
-  // Fallback after retries — force write
-  log('WARN', `KV CAS failed after 5 retries for ${convId}, forcing write`);
-  const latest = await kvConversations.get(convId);
-  if (!latest) return null;
-  const state = jc.decode(latest.value) as ConversationState;
-  state.responses.push({ agentId, response });
-  state.pending += pendingDelta;
-  state.totalMessages++;
-  state.pendingAgents = state.pendingAgents.filter((a: string) => a !== agentId);
-  state.pendingAgents.push(...addPendingAgents);
-  await kvConversations.put(convId, jc.encode(state));
-  return state;
+  // All retries exhausted — fail loudly rather than risk silent data loss
+  const errMsg = `KV CAS failed after 10 retries for conversation ${convId} (agent: ${agentId})`;
+  log('ERROR', errMsg);
+  throw new Error(errMsg);
 }
 
 /**

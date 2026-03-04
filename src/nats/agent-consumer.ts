@@ -199,7 +199,7 @@ async function processAgentMessage(
     // Handoff to teammates — enqueue messages first
     for (const mention of mentions) {
       log('INFO', `[${agentId}] Handoff to ${mention.teammateId}`);
-      publishEvent('chain_handoff', {
+      await publishEvent('chain_handoff', {
         fromAgent: agentId,
         toAgent: mention.teammateId,
         conversationId: msg.conversationId,
