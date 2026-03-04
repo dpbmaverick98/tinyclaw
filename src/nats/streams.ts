@@ -33,8 +33,8 @@ export async function setupStreams(): Promise<void> {
     name: `${STREAM_PREFIX}_MESSAGES`,
     subjects: [`${STREAM_PREFIX}.messages.>`],
     retention: RetentionPolicy.Limits,
-    maxMsgs: 10000,
-    maxAge: 24 * 60 * 60 * 1000 * 1000000, // 24h in nanoseconds
+    max_msgs: 10000,
+    max_age: 24 * 60 * 60 * 1000 * 1000000, // 24h in nanoseconds
     storage: StorageType.File,
   });
 
@@ -44,8 +44,8 @@ export async function setupStreams(): Promise<void> {
     name: `${STREAM_PREFIX}_RESPONSES`,
     subjects: [`${STREAM_PREFIX}.responses.>`],
     retention: RetentionPolicy.Limits,
-    maxMsgs: 1000,
-    maxAge: 60 * 60 * 1000 * 1000000, // 1h in nanoseconds
+    max_msgs: 1000,
+    max_age: 60 * 60 * 1000 * 1000000, // 1h in nanoseconds
     storage: StorageType.File,
   });
 
@@ -55,8 +55,8 @@ export async function setupStreams(): Promise<void> {
     name: `${STREAM_PREFIX}_EVENTS`,
     subjects: [`${STREAM_PREFIX}.events.>`],
     retention: RetentionPolicy.Limits,
-    maxMsgs: 5000,
-    maxAge: 24 * 60 * 60 * 1000 * 1000000, // 24h in nanoseconds
+    max_msgs: 5000,
+    max_age: 24 * 60 * 60 * 1000 * 1000000, // 24h in nanoseconds
     storage: StorageType.Memory, // Events are ephemeral, replay not needed
   });
 
@@ -70,8 +70,8 @@ async function createStream(jsm: any, config: {
   name: string;
   subjects: string[];
   retention: RetentionPolicy;
-  maxMsgs: number;
-  maxAge: number;
+  max_msgs: number;
+  max_age: number;
   storage: StorageType;
 }): Promise<void> {
   try {
