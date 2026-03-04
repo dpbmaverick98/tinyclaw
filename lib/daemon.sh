@@ -161,9 +161,9 @@ start_daemon() {
         pane_idx=$((pane_idx + 1))
     done
 
-    # Queue pane
-    tmux send-keys -t "$TMUX_SESSION:${win_base}.$pane_idx" "cd '$SCRIPT_DIR' && node dist/queue-processor.js" C-m
-    tmux select-pane -t "$TMUX_SESSION:${win_base}.$pane_idx" -T "Queue"
+    # Queue pane (now uses NATS orchestrator)
+    tmux send-keys -t "$TMUX_SESSION:${win_base}.$pane_idx" "cd '$SCRIPT_DIR' && node dist/orchestrator.js" C-m
+    tmux select-pane -t "$TMUX_SESSION:${win_base}.$pane_idx" -T "Orchestrator"
     pane_idx=$((pane_idx + 1))
 
     # Heartbeat pane
