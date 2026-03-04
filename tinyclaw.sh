@@ -28,6 +28,11 @@ SETTINGS_FILE="$TINYCLAW_HOME/settings.json"
 
 mkdir -p "$LOG_DIR"
 
+# Export NATS configuration for channel clients
+# Channel clients now connect directly to NATS (nats-client-side architecture)
+export NATS_URL="${NATS_URL:-nats://localhost:4222}"
+export NATS_STREAM_PREFIX="${NATS_STREAM_PREFIX:-tinyclaw}"
+
 # Source library files
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/daemon.sh"
