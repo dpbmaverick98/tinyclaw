@@ -50,15 +50,31 @@ We are actively looking for contributors. Please reach out.
 - Node.js v18+
 - tmux, jq
 - Bash 3.2+
-- [NATS Server](https://docs.nats.io/running-a-nats-service/introduction/installation) (for message queue)
+- **[NATS Server](https://docs.nats.io/running-a-nats-service/introduction/installation)** (required for message queue)
 - [Claude Code CLI](https://claude.com/claude-code) (for Anthropic provider)
 - [Codex CLI](https://docs.openai.com/codex) (for OpenAI provider)
 
-### Installation
+### Quick Start with NATS
+
+TinyClaw uses NATS JetStream for reliable message queuing. Start NATS first:
+
+```bash
+# Using Docker
+docker run -d --name nats -p 4222:4222 -p 8222:8222 nats:latest -js
+
+# Or with NATS CLI
+nats-server -js
+```
+
+Then install and run TinyClaw:
 
 **Option 1: One-line Install (Recommended)**
 
 ```bash
+# 1. Start NATS server (if not already running)
+docker run -d --name nats -p 4222:4222 nats:latest -js
+
+# 2. Install TinyClaw
 curl -fsSL https://raw.githubusercontent.com/TinyAGI/tinyclaw/main/scripts/remote-install.sh | bash
 ```
 
