@@ -62,12 +62,22 @@ function logAgentConfig(): void {
 }
 
 /**
- * Deliver response to channel client via API
+ * Deliver response to channel client
+ * 
+ * Note: Channel clients currently poll /api/responses/pending for responses.
+ * This function logs the response for debugging. In future, this could
+ * push directly to channel clients via WebSocket or webhook.
  */
 async function deliverResponse(response: ResponseMessage): Promise<void> {
-  // For now, responses are consumed by channel clients via NATS
-  // This function could be extended for direct delivery
-  log('DEBUG', `Response for ${response.channel}/${response.sender} ready`);
+  log('INFO', `[${response.channel}] Response ready for ${response.sender} (${response.response.length} chars)`);
+  
+  // TODO: Implement direct push to channel clients
+  // Options:
+  // 1. WebSocket server for real-time push
+  // 2. Webhook callbacks registered by channel clients
+  // 3. Shared memory / pub-sub within process
+  // 
+  // For now, channel clients poll /api/responses/pending which reads from NATS
 }
 
 /**
@@ -102,32 +112,53 @@ async function main(): Promise<void> {
     
     // Start API server
     const apiServer = startApiServer();
-    
-    // Start agent consumers
+
+    // Track running consumers for restart management
+    const runningConsumers = new Map<string, boolean>();
+
+    // Start agent consumers with proper restart tracking
     const consumerPromises: Promise<void>[] = [];
-    
-    for (const agentId of Object.keys(agents)) {
-      const promise = startAgentConsumer(agentId).catch(err => {
-        log('ERROR', `Agent ${agentId} consumer crashed: ${err.message}`);
-        // Restart after delay
-        setTimeout(() => {
-          log('INFO', `Restarting consumer for agent ${agentId}`);
-          startAgentConsumer(agentId).catch(e => 
-            log('ERROR', `Agent ${agentId} restart failed: ${e.message}`)
-          );
-        }, 5000);
-      });
+
+    async function startAgentConsumerWithRestart(agentId: string): Promise<void> {
+      runningConsumers.set(`agent:${agentId}`, true);
       
-      consumerPromises.push(promise);
+      while (runningConsumers.get(`agent:${agentId}`)) {
+        try {
+          await startAgentConsumer(agentId);
+          // If consumer returns normally, don't restart
+          break;
+        } catch (err) {
+          log('ERROR', `Agent ${agentId} consumer crashed: ${(err as Error).message}`);
+          log('INFO', `Restarting consumer for agent ${agentId} in 5s...`);
+          await new Promise(r => setTimeout(r, 5000));
+        }
+      }
     }
+
+    for (const agentId of Object.keys(agents)) {
+      consumerPromises.push(startAgentConsumerWithRestart(agentId));
+    }
+
+    // Start response consumers for enabled channels
+    const enabledChannels = settings.channels?.enabled || ['telegram', 'discord', 'whatsapp', 'api'];
     
-    // Start response consumers for each channel
-    const channels = ['telegram', 'discord', 'whatsapp', 'api'];
-    for (const channel of channels) {
-      const promise = startResponseConsumer(channel, deliverResponse).catch(err => {
-        log('ERROR', `Response consumer for ${channel} crashed: ${err.message}`);
-      });
-      consumerPromises.push(promise);
+    async function startResponseConsumerWithRestart(channel: string): Promise<void> {
+      runningConsumers.set(`response:${channel}`, true);
+      
+      while (runningConsumers.get(`response:${channel}`)) {
+        try {
+          await startResponseConsumer(channel, deliverResponse);
+          break;
+        } catch (err) {
+          log('ERROR', `Response consumer for ${channel} crashed: ${(err as Error).message}`);
+          log('INFO', `Restarting response consumer for ${channel} in 5s...`);
+          await new Promise(r => setTimeout(r, 5000));
+        }
+      }
+    }
+
+    for (const channel of enabledChannels) {
+      consumerPromises.push(startResponseConsumerWithRestart(channel));
     }
     
     // Emit startup event
