@@ -8,7 +8,7 @@
 import { getNATS, getJSONCodec } from './connection';
 import { getStreamPrefix } from './streams';
 import { AgentMessage, ResponseMessage, EventMessage, EventType, ConversationState } from './types';
-import { log } from '../lib/logging';
+import { log, emitEvent } from '../lib/logging';
 
 const jc = getJSONCodec();
 
@@ -133,6 +133,9 @@ export async function publishEvent(
   };
 
   await js.publish(`${prefix}.events.${eventType}`, jc.encode(event));
+
+  // Also emit in-process so SSE broadcast picks it up (orchestrator + API server share the same process)
+  emitEvent(eventType, { ...data, timestamp: event.timestamp });
 }
 
 /**

@@ -70,12 +70,23 @@ app.post('/api/message', async (c) => {
     );
 
     log('INFO', `[API] Message enqueued for ${targetAgent}: ${messageBody.substring(0, 60)}...`);
-    emitEvent('message_enqueued', {
-        messageId,
-        agent: targetAgent,
+
+    // Emit events for visualizer
+    emitEvent('message_received', {
         channel: resolvedChannel,
         sender: resolvedSender,
         message: messageBody.substring(0, 120),
+        messageId,
+    });
+
+    const isTeamRouted = !!(agent && teams[agent]) || !!(body as any).agent && teams[(body as any).agent];
+    const targetAgentConfig = agents[targetAgent];
+    emitEvent('agent_routed', {
+        agentId: targetAgent,
+        agentName: targetAgentConfig?.name || targetAgent,
+        provider: targetAgentConfig?.provider || 'anthropic',
+        model: targetAgentConfig?.model || 'unknown',
+        isTeamRouted,
     });
 
     return c.json({ ok: true, messageId });

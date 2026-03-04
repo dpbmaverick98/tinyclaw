@@ -134,6 +134,16 @@ async function processAgentMessage(
       startTime: Date.now(),
       pendingAgents: [agentId],
     };
+
+    // Emit team_chain_start for visualizer when a new team conversation begins
+    if (teamContext) {
+      publishEvent('team_chain_start', {
+        teamId: teamContext.teamId,
+        teamName: teamContext.team.name,
+        agents: teamContext.team.agents,
+        leader: teamContext.team.leader_agent,
+      });
+    }
   }
   
   // Build prompt from history
