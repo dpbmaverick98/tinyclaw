@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { log, emitEvent } from '../../lib/logging';
 import { enqueueUserMessage } from '../../nats/publisher';
+import { getSettings, getAgents, getTeams } from '../../lib/config';
+import { parseAgentRouting } from '../../lib/routing';
 
 const app = new Hono();
 
@@ -20,11 +22,42 @@ app.post('/api/message', async (c) => {
     const resolvedSender = sender || 'API';
     const messageId = clientMessageId || `api_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    // Append channel and sender context as a signature
-    const fullMessage = (channel && sender) ? `${message}\n\n— ${sender} via ${channel}` : message;
+    // Load settings for routing resolution
+    const settings = getSettings();
+    const agents = getAgents(settings);
+    const teams = getTeams(settings);
 
-    // Route to agent or default
-    const targetAgent = agent || 'default';
+    // Resolve routing: handle team names, agent display names, and @prefix
+    let targetAgent: string;
+    let messageBody: string;
+
+    if (agent && agents[agent]) {
+        // Direct agent ID provided
+        targetAgent = agent;
+        messageBody = message;
+    } else {
+        // Parse @agent or @team prefix from message, or use provided agent param
+        const routing = parseAgentRouting(message, agents, teams);
+        targetAgent = routing.agentId;
+        messageBody = routing.message;
+
+        // If agent param was a team name, resolve to leader
+        if (agent && teams[agent]) {
+            targetAgent = teams[agent].leader_agent;
+            messageBody = message; // Don't strip prefix if agent param was explicit team
+        } else if (agent && !agents[agent]) {
+            // Check if agent param matches an agent name
+            for (const [id, config] of Object.entries(agents)) {
+                if (config.name.toLowerCase() === agent.toLowerCase()) {
+                    targetAgent = id;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Append channel and sender context as a signature
+    const fullMessage = (channel && sender) ? `${messageBody}\n\n— ${sender} via ${channel}` : messageBody;
 
     await enqueueUserMessage(
         messageId,
@@ -36,13 +69,13 @@ app.post('/api/message', async (c) => {
         files
     );
 
-    log('INFO', `[API] Message enqueued for ${targetAgent}: ${message.substring(0, 60)}...`);
+    log('INFO', `[API] Message enqueued for ${targetAgent}: ${messageBody.substring(0, 60)}...`);
     emitEvent('message_enqueued', {
         messageId,
         agent: targetAgent,
         channel: resolvedChannel,
         sender: resolvedSender,
-        message: message.substring(0, 120),
+        message: messageBody.substring(0, 120),
     });
 
     return c.json({ ok: true, messageId });
