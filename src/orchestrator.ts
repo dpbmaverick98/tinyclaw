@@ -22,7 +22,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { initNATS, closeNATS, isNATSConnected, setupStreams, startAgentConsumer, publishEvent, initKV } from './nats';
+import { initNATS, closeNATS, isNATSConnected, setupStreams, startAgentWorker, publishEvent } from './nats';
 import { getSettings, getAgents, getTeams, LOG_FILE, CHATS_DIR, FILES_DIR } from './lib/config';
 import { log } from './lib/logging';
 import { startApiServer } from './server';
@@ -75,9 +75,6 @@ async function main(): Promise<void> {
     // Setup JetStream streams
     await setupStreams();
 
-    // Initialize KV store
-    await initKV();
-
     // Load plugins
     await loadPlugins();
 
@@ -93,30 +90,25 @@ async function main(): Promise<void> {
     // Start API server
     const apiServer = startApiServer();
 
-    // Track running consumers for restart management
-    const runningConsumers = new Map<string, boolean>();
+    // Start agent workers with restart tracking
+    const workerPromises: Promise<void>[] = [];
 
-    // Start agent consumers with proper restart tracking
-    const consumerPromises: Promise<void>[] = [];
-
-    async function startAgentConsumerWithRestart(agentId: string): Promise<void> {
-      runningConsumers.set(`agent:${agentId}`, true);
-
-      while (runningConsumers.get(`agent:${agentId}`)) {
+    async function startAgentWorkerWithRestart(agentId: string): Promise<void> {
+      while (true) {
         try {
-          await startAgentConsumer(agentId);
-          // If consumer returns normally, don't restart
+          await startAgentWorker(agentId);
+          // If worker returns normally, don't restart
           break;
         } catch (err) {
-          log('ERROR', `Agent ${agentId} consumer crashed: ${(err as Error).message}`);
-          log('INFO', `Restarting consumer for agent ${agentId} in 5s...`);
+          log('ERROR', `Agent ${agentId} worker crashed: ${(err as Error).message}`);
+          log('INFO', `Restarting worker for agent ${agentId} in 5s...`);
           await new Promise(r => setTimeout(r, 5000));
         }
       }
     }
 
     for (const agentId of Object.keys(agents)) {
-      consumerPromises.push(startAgentConsumerWithRestart(agentId));
+      workerPromises.push(startAgentWorkerWithRestart(agentId));
     }
 
     // Note: Response consumers are now handled by channel clients directly
@@ -133,7 +125,7 @@ async function main(): Promise<void> {
     logAgentConfig();
 
     // Keep running
-    await Promise.all(consumerPromises);
+    await Promise.all(workerPromises);
 
   } catch (err) {
     log('ERROR', `Orchestrator failed: ${(err as Error).message}`);

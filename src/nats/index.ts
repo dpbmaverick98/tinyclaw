@@ -1,6 +1,6 @@
 /**
  * NATS Module Index
- * 
+ *
  * Central export for all NATS-related functionality.
  */
 
@@ -22,18 +22,13 @@ export type {
   AgentConsumerConfig,
 } from './types';
 
-// Publisher
+// Publisher (simplified - direct publish functions)
 export {
   enqueueUserMessage,
-  enqueueInternalMessage,
   publishResponse,
   publishEvent,
-  initKV,
-  saveConversationState,
-  getConversationState,
-  deleteConversationState,
 } from './publisher';
 
-// Consumers
-export { startAgentConsumer } from './agent-consumer';
-export { connectAndConsume } from './client-consumer';
+// Workers
+export { startAgentWorker } from './agent-worker';
+export { startChannelConsumer } from './channel-consumer';
