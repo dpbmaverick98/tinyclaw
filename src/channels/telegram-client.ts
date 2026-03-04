@@ -13,7 +13,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { ensureSenderPaired } from '../lib/pairing';
-import { connectAndConsume } from '../nats/client-consumer';
+import { startChannelConsumer } from '../nats/channel-consumer';
 import { ResponseMessage } from '../nats/types';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
@@ -79,7 +79,6 @@ function buildUniqueFilePath(dir: string, preferredName: string): string {
 const pendingMessages = new Map<string, PendingMessage>();
 let lastPollingActivity = Date.now();
 let pollingRestartInProgress = false;
-let natsConsumer: { stop: () => void } | null = null;
 
 // Logger
 function log(level: string, message: string): void {
@@ -540,11 +539,13 @@ async function handleNATSResponse(
 // Start NATS consumer for responses
 async function startNATSConsumer(): Promise<void> {
     try {
-        natsConsumer = await connectAndConsume('telegram', handleNATSResponse);
+        // startChannelConsumer blocks forever - run in background
+        startChannelConsumer('telegram', handleNATSResponse)
+            .then(() => log('INFO', 'NATS consumer stopped (should not happen)'))
+            .catch(err => log('ERROR', `NATS consumer error: ${(err as Error).message}`));
         log('INFO', 'NATS consumer started for Telegram responses');
     } catch (err) {
         log('ERROR', `Failed to start NATS consumer: ${(err as Error).message}`);
-        // Will retry via connectAndConsume's built-in retry logic
     }
 }
 
@@ -628,18 +629,12 @@ process.on('uncaughtException', (error) => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
     log('INFO', 'Shutting down Telegram client...');
-    if (natsConsumer) {
-        await natsConsumer.stop();
-    }
     bot.stopPolling();
     process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
     log('INFO', 'Shutting down Telegram client...');
-    if (natsConsumer) {
-        await natsConsumer.stop();
-    }
     bot.stopPolling();
     process.exit(0);
 });

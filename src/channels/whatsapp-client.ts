@@ -9,7 +9,7 @@ import qrcode from 'qrcode-terminal';
 import fs from 'fs';
 import path from 'path';
 import { ensureSenderPaired } from '../lib/pairing';
-import { connectAndConsume } from '../nats/client-consumer';
+import { startChannelConsumer } from '../nats/channel-consumer';
 import { ResponseMessage } from '../nats/types';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
@@ -89,7 +89,6 @@ async function downloadWhatsAppMedia(message: Message, queueMessageId: string): 
 
 // Track pending messages (waiting for response)
 const pendingMessages = new Map<string, PendingMessage>();
-let natsConsumer: { stop: () => void } | null = null;
 
 // Logger
 function log(level: string, message: string): void {
@@ -442,11 +441,13 @@ async function handleNATSResponse(
 // Start NATS consumer for responses
 async function startNATSConsumer(): Promise<void> {
     try {
-        natsConsumer = await connectAndConsume('whatsapp', handleNATSResponse);
+        // startChannelConsumer blocks forever - run in background
+        startChannelConsumer('whatsapp', handleNATSResponse)
+            .then(() => log('INFO', 'NATS consumer stopped (should not happen)'))
+            .catch(err => log('ERROR', `NATS consumer error: ${(err as Error).message}`));
         log('INFO', 'NATS consumer started for WhatsApp responses');
     } catch (err) {
         log('ERROR', `Failed to start NATS consumer: ${(err as Error).message}`);
-        // Will retry via connectAndConsume's built-in retry logic
     }
 }
 
@@ -489,10 +490,6 @@ process.on('SIGINT', async () => {
         fs.unlinkSync(readyFile);
     }
 
-    if (natsConsumer) {
-        await natsConsumer.stop();
-    }
-
     await client.destroy();
     process.exit(0);
 });
@@ -504,10 +501,6 @@ process.on('SIGTERM', async () => {
     const readyFile = path.join(TINYCLAW_HOME, 'channels/whatsapp_ready');
     if (fs.existsSync(readyFile)) {
         fs.unlinkSync(readyFile);
-    }
-
-    if (natsConsumer) {
-        await natsConsumer.stop();
     }
 
     await client.destroy();

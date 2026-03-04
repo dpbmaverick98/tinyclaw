@@ -11,7 +11,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { ensureSenderPaired } from '../lib/pairing';
-import { connectAndConsume } from '../nats/client-consumer';
+import { startChannelConsumer } from '../nats/channel-consumer';
 import { ResponseMessage } from '../nats/types';
 
 const API_PORT = parseInt(process.env.TINYCLAW_API_PORT || '3777', 10);
@@ -95,7 +95,6 @@ function downloadFile(url: string, destPath: string): Promise<void> {
 
 // Track pending messages (waiting for response)
 const pendingMessages = new Map<string, PendingMessage>();
-let natsConsumer: { stop: () => void } | null = null;
 
 // Logger
 function log(level: string, message: string): void {
@@ -452,11 +451,13 @@ async function handleNATSResponse(
 // Start NATS consumer for responses
 async function startNATSConsumer(): Promise<void> {
     try {
-        natsConsumer = await connectAndConsume('discord', handleNATSResponse);
+        // startChannelConsumer blocks forever - run in background
+        startChannelConsumer('discord', handleNATSResponse)
+            .then(() => log('INFO', 'NATS consumer stopped (should not happen)'))
+            .catch(err => log('ERROR', `NATS consumer error: ${(err as Error).message}`));
         log('INFO', 'NATS consumer started for Discord responses');
     } catch (err) {
         log('ERROR', `Failed to start NATS consumer: ${(err as Error).message}`);
-        // Will retry via connectAndConsume's built-in retry logic
     }
 }
 
@@ -480,18 +481,12 @@ process.on('uncaughtException', (error) => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
     log('INFO', 'Shutting down Discord client...');
-    if (natsConsumer) {
-        await natsConsumer.stop();
-    }
     client.destroy();
     process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
     log('INFO', 'Shutting down Discord client...');
-    if (natsConsumer) {
-        await natsConsumer.stop();
-    }
     client.destroy();
     process.exit(0);
 });
