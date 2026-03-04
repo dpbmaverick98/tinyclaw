@@ -196,6 +196,66 @@ export async function getConversationState(convId: string): Promise<Conversation
 }
 
 /**
+ * Atomically update conversation state: append a response, adjust pending count, and
+ * remove the agent from pendingAgents. Uses KV revision-based CAS to handle concurrent
+ * writes from parallel agent branches.
+ *
+ * @param convId - Conversation ID
+ * @param agentId - Agent that just finished
+ * @param response - Agent's response text
+ * @param pendingDelta - Change to pending count (e.g. +mentions.length - 1 for handoff, -1 for leaf)
+ * @param addPendingAgents - Agent IDs to add to pendingAgents (for handoff targets)
+ * @returns Updated state, or null if conversation no longer exists
+ */
+export async function atomicConvUpdate(
+  convId: string,
+  agentId: string,
+  response: string,
+  pendingDelta: number,
+  addPendingAgents: string[] = []
+): Promise<ConversationState | null> {
+  if (!kvConversations) {
+    await initKV();
+  }
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const entry = await kvConversations.get(convId);
+    if (!entry) return null;
+
+    const state = jc.decode(entry.value) as ConversationState;
+    state.responses.push({ agentId, response });
+    state.pending += pendingDelta;
+    state.totalMessages++;
+    state.pendingAgents = state.pendingAgents.filter((a: string) => a !== agentId);
+    state.pendingAgents.push(...addPendingAgents);
+
+    try {
+      await kvConversations.update(convId, jc.encode(state), entry.revision);
+      return state;
+    } catch (err) {
+      const msg = (err as Error).message || '';
+      if (msg.includes('wrong last sequence')) {
+        continue; // Conflict — another agent wrote first, retry
+      }
+      throw err;
+    }
+  }
+
+  // Fallback after retries — force write
+  log('WARN', `KV CAS failed after 5 retries for ${convId}, forcing write`);
+  const latest = await kvConversations.get(convId);
+  if (!latest) return null;
+  const state = jc.decode(latest.value) as ConversationState;
+  state.responses.push({ agentId, response });
+  state.pending += pendingDelta;
+  state.totalMessages++;
+  state.pendingAgents = state.pendingAgents.filter((a: string) => a !== agentId);
+  state.pendingAgents.push(...addPendingAgents);
+  await kvConversations.put(convId, jc.encode(state));
+  return state;
+}
+
+/**
  * Delete conversation state from KV store
  */
 export async function deleteConversationState(convId: string): Promise<void> {

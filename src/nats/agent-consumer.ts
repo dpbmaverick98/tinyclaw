@@ -14,7 +14,7 @@ import { AgentMessage, ResponseMessage, HandoffResult, Message } from './types';
 import { invokeAgent } from '../lib/invoke';
 import { getSettings, getAgents, getTeams } from '../lib/config';
 import { log } from '../lib/logging';
-import { enqueueInternalMessage, publishResponse, publishEvent, saveConversationState, getConversationState } from './publisher';
+import { enqueueInternalMessage, publishResponse, publishEvent, saveConversationState, getConversationState, atomicConvUpdate } from './publisher';
 import { extractTeammateMentions, findTeamForAgent } from '../lib/routing';
 import { runIncomingHooks, runOutgoingHooks } from '../lib/plugins';
 import { handleLongResponse, collectFiles } from '../lib/response';
@@ -144,6 +144,9 @@ async function processAgentMessage(
         leader: teamContext.team.leader_agent,
       });
     }
+
+    // Save initial state so atomicConvUpdate can find it later
+    await saveConversationState(conv);
   }
   
   // Build prompt from history
@@ -186,36 +189,27 @@ async function processAgentMessage(
     conversationId: msg.conversationId,
   });
   
-  // Update conversation state
-  conv.responses.push({ agentId, response });
-  conv.totalMessages++;
-  conv.pendingAgents = conv.pendingAgents.filter(a => a !== agentId);
-  collectFiles(response, new Set(conv.files));
-  
   // Check for teammate mentions
-  const mentions = teamContext 
+  collectFiles(response, new Set(conv.files));
+  const mentions = teamContext
     ? extractTeammateMentions(response, agentId, teamContext.teamId, teams, agents)
     : [];
-  
+
   if (mentions.length > 0 && conv.totalMessages < conv.maxMessages) {
-    // Handoff to teammates
-    conv.pending += mentions.length;
-    
+    // Handoff to teammates — enqueue messages first
     for (const mention of mentions) {
-      conv.pendingAgents.push(mention.teammateId);
-      
       log('INFO', `[${agentId}] Handoff to ${mention.teammateId}`);
       publishEvent('chain_handoff', {
         fromAgent: agentId,
         toAgent: mention.teammateId,
         conversationId: msg.conversationId,
       });
-      
+
       const updatedHistory: Message[] = [
         ...msg.history,
         { role: 'agent', agentId, content: response, timestamp: Date.now() }
       ];
-      
+
       await enqueueInternalMessage(
         msg.conversationId,
         agentId,
@@ -230,21 +224,18 @@ async function processAgentMessage(
         }
       );
     }
-    
-    // Save state for tracking
-    conv.pending--;
-    await saveConversationState(conv);
-    
+
+    // Atomically: append response, add new pending mentions, subtract self
+    // pendingDelta = +mentions.length (new branches) - 1 (this agent done)
+    const newAgents = mentions.map(m => m.teammateId);
+    await atomicConvUpdate(conv.id, agentId, response, mentions.length - 1, newAgents);
+
   } else {
-    // No handoffs - check if conversation complete
-    conv.pending--;
-    
-    if (conv.pending <= 0) {
-      // Conversation complete
-      await completeConversation(conv, agents);
-    } else {
-      // More pending branches
-      await saveConversationState(conv);
+    // No handoffs — atomically append response and decrement pending
+    const updated = await atomicConvUpdate(conv.id, agentId, response, -1);
+
+    if (updated && updated.pending <= 0) {
+      await completeConversation(updated, agents);
     }
   }
 }
