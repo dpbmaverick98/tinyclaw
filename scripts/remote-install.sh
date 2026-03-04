@@ -53,6 +53,9 @@ if ! command_exists claude; then
     MISSING_DEPS+=("claude (Claude Code CLI)")
 fi
 
+echo ""
+echo -e "${BLUE}[1/6] Checking dependencies...${NC}"
+
 if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
     echo -e "${RED}✗ Missing dependencies:${NC}"
     for dep in "${MISSING_DEPS[@]}"; do
@@ -68,6 +71,19 @@ if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
 fi
 
 echo -e "${GREEN}✓ All dependencies found${NC}"
+echo ""
+
+# Check for NATS (optional but recommended)
+echo -e "${BLUE}[1.5/6] Checking for NATS server...${NC}"
+if command -v nats-server >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ NATS server found${NC}"
+else
+    echo -e "${YELLOW}⚠ NATS server not found${NC}"
+    echo "  TinyClaw uses NATS for message queue."
+    echo "  Install: https://docs.nats.io/running-a-nats-service/introduction/installation"
+    echo "  Or use Docker: docker run -d --name nats -p 4222:4222 nats:latest -js"
+    echo ""
+fi
 echo ""
 
 # Determine installation directory
