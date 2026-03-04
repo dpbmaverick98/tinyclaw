@@ -36,4 +36,4 @@ export {
 
 // Consumers
 export { startAgentConsumer } from './agent-consumer';
-export { startResponseConsumer, stopResponseConsumer, getRecentResponses } from './response-consumer';
+export { connectAndConsume } from './client-consumer';
