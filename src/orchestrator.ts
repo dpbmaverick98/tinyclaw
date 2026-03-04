@@ -23,6 +23,7 @@
 import fs from 'fs';
 import path from 'path';
 import { initNATS, closeNATS, isNATSConnected, setupStreams, startAgentConsumer, startResponseConsumer, publishEvent, initKV } from './nats';
+import { addPendingResponse } from './nats/response-buffer';
 import { getSettings, getAgents, getTeams, LOG_FILE, CHATS_DIR, FILES_DIR } from './lib/config';
 import { log } from './lib/logging';
 import { startApiServer } from './server';
@@ -69,15 +70,8 @@ function logAgentConfig(): void {
  * push directly to channel clients via WebSocket or webhook.
  */
 async function deliverResponse(response: ResponseMessage): Promise<void> {
+  addPendingResponse(response);
   log('INFO', `[${response.channel}] Response ready for ${response.sender} (${response.response.length} chars)`);
-  
-  // TODO: Implement direct push to channel clients
-  // Options:
-  // 1. WebSocket server for real-time push
-  // 2. Webhook callbacks registered by channel clients
-  // 3. Shared memory / pub-sub within process
-  // 
-  // For now, channel clients poll /api/responses/pending which reads from NATS
 }
 
 /**

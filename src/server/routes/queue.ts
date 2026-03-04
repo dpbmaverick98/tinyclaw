@@ -1,10 +1,8 @@
 import { Hono } from 'hono';
 import { log } from '../../lib/logging';
-import { getNATS, getJSONCodec } from '../../nats/connection';
+import { getNATS } from '../../nats/connection';
 import { getStreamPrefix } from '../../nats/streams';
-import { getRecentResponses } from '../../nats/response-consumer';
-
-const jc = getJSONCodec();
+import { getPendingResponses, ackPendingResponse } from '../../nats/response-buffer';
 
 /**
  * Create queue routes with NATS backend
@@ -15,6 +13,22 @@ const jc = getJSONCodec();
  * - Response acking (handled by consumers)
  * - Message claiming (handled by consumer groups)
  */
+function formatResponse(r: any) {
+    return {
+        id: r.conversationId,
+        channel: r.channel,
+        sender: r.sender,
+        senderId: r.senderId,
+        message: r.response,
+        originalMessage: r.originalMessage || '',
+        timestamp: r.createdAt || Date.now(),
+        messageId: r.conversationId,
+        agent: r.agentId,
+        files: r.files,
+        metadata: r.metadata,
+    };
+}
+
 export function createQueueRoutes() {
     const app = new Hono();
 
@@ -59,56 +73,26 @@ export function createQueueRoutes() {
     });
 
     // GET /api/responses - Get recent responses
-    app.get('/api/responses', async (c) => {
+    app.get('/api/responses', (c) => {
         const limit = parseInt(c.req.query('limit') || '20', 10);
 
-        // Get from all channels
         const allResponses: any[] = [];
-        const channels = ['telegram', 'discord', 'whatsapp', 'api'];
-
-        for (const channel of channels) {
-            const responses = await getRecentResponses(channel, limit);
-            allResponses.push(...responses.map(r => ({
-                id: r.conversationId ? parseInt(r.conversationId.split('_')[1] || '0') : 0,
-                channel: r.channel,
-                sender: r.sender,
-                senderId: r.senderId,
-                message: r.response,
-                originalMessage: r.originalMessage || '',
-                timestamp: r.createdAt || Date.now(),
-                messageId: r.conversationId,
-                agent: r.agentId,
-                files: r.files,
-                metadata: r.metadata,
-            })));
+        for (const channel of ['telegram', 'discord', 'whatsapp', 'api']) {
+            for (const r of getPendingResponses(channel)) {
+                allResponses.push(formatResponse(r));
+            }
         }
 
-        // Sort by timestamp (newest first) and limit
         allResponses.sort((a, b) => b.timestamp - a.timestamp);
         return c.json(allResponses.slice(0, limit));
     });
 
-    // GET /api/responses/pending?channel=whatsapp
-    app.get('/api/responses/pending', async (c) => {
+    // GET /api/responses/pending?channel=telegram
+    app.get('/api/responses/pending', (c) => {
         const channel = c.req.query('channel');
         if (!channel) return c.json({ error: 'channel query param required' }, 400);
 
-        // Get recent responses for this channel
-        const responses = await getRecentResponses(channel, 50);
-
-        return c.json(responses.map(r => ({
-            id: r.conversationId ? parseInt(r.conversationId.split('_')[1] || '0') : 0,
-            channel: r.channel,
-            sender: r.sender,
-            senderId: r.senderId,
-            message: r.response,
-            originalMessage: r.originalMessage || '',
-            timestamp: r.createdAt || Date.now(),
-            messageId: r.conversationId,
-            agent: r.agentId,
-            files: r.files,
-            metadata: r.metadata,
-        })));
+        return c.json(getPendingResponses(channel).map(formatResponse));
     });
 
     // POST /api/responses — enqueue a proactive outgoing message
@@ -135,11 +119,11 @@ export function createQueueRoutes() {
         return c.json({ ok: true, messageId });
     });
 
-    // POST /api/responses/:id/ack
-    // In NATS, acking is handled by consumers - this is a no-op for compatibility
+    // POST /api/responses/:id/ack — remove from pending buffer
     app.post('/api/responses/:id/ack', (c) => {
         const id = c.req.param('id');
-        log('DEBUG', `[API] Response ack received for ${id} (NATS handles acking)`);
+        ackPendingResponse(id);
+        log('DEBUG', `[API] Response acked: ${id}`);
         return c.json({ ok: true });
     });
 
