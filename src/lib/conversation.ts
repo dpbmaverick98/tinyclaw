@@ -99,12 +99,12 @@ export function enqueueInternalMessage(
 /**
  * Complete a conversation: aggregate responses, write to outgoing queue, save chat history.
  */
-export function completeConversation(conv: Conversation): void {
+export async function completeConversation(conv: Conversation): Promise<void> {
     const settings = getSettings();
     const agents = getAgents(settings);
 
     log('INFO', `Conversation ${conv.id} complete — ${conv.responses.length} response(s), ${conv.totalMessages} total message(s)`);
-    emitEvent('team_chain_end', {
+    await emitEvent('team_chain_end', {
         teamId: conv.teamContext.teamId,
         totalSteps: conv.responses.length,
         agents: conv.responses.map(s => s.agentId),

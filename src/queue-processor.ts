@@ -100,7 +100,7 @@ async function handleSimpleResponse(
         });
 
         log('INFO', `✓ Response ready [${channel}] ${sender} via agent:${agentId} (${finalResponse.length} chars)`);
-        emitEvent('response_ready', {
+        await emitEvent('response_ready', {
             channel, sender, agentId,
             responseLength: finalResponse.length,
             responseText: finalResponse,
@@ -157,7 +157,7 @@ async function handleTeamResponse(
                 addPendingAgent(conv.id, mention.teammateId);
 
                 log('INFO', `@${agentId} → @${mention.teammateId}`);
-                emitEvent('chain_handoff', {
+                await emitEvent('chain_handoff', {
                     teamId: conv.teamContext.teamId,
                     fromAgent: agentId,
                     toAgent: mention.teammateId
@@ -184,7 +184,7 @@ async function handleTeamResponse(
             const dbResponses = loadConversationResponses(conv.id);
             conv.responses = dbResponses.map(r => ({ agentId: r.agent_id, response: r.response }));
 
-            completeConversation(conv);
+            await completeConversation(conv);
             markConversationCompleted(conv.id);
             conversations.delete(conv.id);
         } else {
@@ -232,7 +232,7 @@ async function handleTeamError(
             const dbResponses = loadConversationResponses(conv.id);
             conv.responses = dbResponses.map(r => ({ agentId: r.agent_id, response: r.response }));
 
-            completeConversation(conv);
+            await completeConversation(conv);
             markConversationCompleted(conv.id);
             conversations.delete(conv.id);
         } else {
@@ -455,7 +455,7 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
             conversations.set(conv.id, conv);
             persistConversation(conv);  // Persist immediately
             log('INFO', `Conversation started: ${conv.id} (team: ${teamContext.team.name})`);
-            emitEvent('team_chain_start', { teamId: teamContext.teamId, teamName: teamContext.team.name, agents: teamContext.team.agents, leader: teamContext.team.leader_agent });
+            await emitEvent('team_chain_start', { teamId: teamContext.teamId, teamName: teamContext.team.name, agents: teamContext.team.agents, leader: teamContext.team.leader_agent });
         }
 
         // Fire-and-forget: don't await invokeAgent
@@ -536,8 +536,10 @@ if (recovered > 0) {
 }
 
 // NEW: Recover active conversations from DB
-const activeConvs = loadActiveConversations();
-if (activeConvs.length > 0) {
+async function recoverConversations(): Promise<void> {
+    const activeConvs = loadActiveConversations();
+    if (activeConvs.length === 0) return;
+
     log('INFO', `Recovering ${activeConvs.length} active conversation(s) from DB`);
 
     const settings = getSettings();
@@ -573,7 +575,7 @@ if (activeConvs.length > 0) {
 
             if (conv.pending === 0) {
                 log('INFO', `Conversation ${conv.id} has no pending branches, completing`);
-                completeConversation(conv);
+                await completeConversation(conv);
                 markConversationCompleted(conv.id);
                 conversations.delete(conv.id);
             } else {
@@ -588,14 +590,15 @@ if (activeConvs.length > 0) {
 // Start the API server (passes conversations for queue status reporting)
 const apiServer = startApiServer(conversations);
 
-// Load plugins (async IIFE to avoid top-level await)
+// Load plugins and recover conversations (async IIFE to avoid top-level await)
 (async () => {
+    await recoverConversations();
     await loadPlugins();
+    
+    log('INFO', 'Queue processor started (SQLite-backed, parallel processing)');
+    logAgentConfig();
+    await emitEvent('processor_start', { agents: Object.keys(getAgents(getSettings())), teams: Object.keys(getTeams(getSettings())) });
 })();
-
-log('INFO', 'Queue processor started (SQLite-backed, parallel processing)');
-logAgentConfig();
-emitEvent('processor_start', { agents: Object.keys(getAgents(getSettings())), teams: Object.keys(getTeams(getSettings())) });
 
 // Event-driven: all messages come through the API server (same process)
 queueEvents.on('message:enqueued', () => processQueue());
