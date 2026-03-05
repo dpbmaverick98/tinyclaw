@@ -34,7 +34,7 @@ import { startApiServer } from './server';
 import {
     initQueueDb, claimNextMessage, completeMessage as dbCompleteMessage,
     failMessage, enqueueResponse, getPendingAgents, recoverStaleMessages,
-    pruneAckedResponses, pruneCompletedMessages, recoverStaleConversations, closeQueueDb, queueEvents, DbMessage,
+    pruneAckedResponses, pruneCompletedMessages, recoverStaleConversations, getStaleConversations, closeQueueDb, queueEvents, DbMessage,
     // NEW: Conversation persistence functions
     persistConversation, persistResponse, decrementPendingInDb, incrementPendingInDb,
     incrementTotalMessages, markConversationCompleted, loadActiveConversations,
@@ -575,10 +575,20 @@ if (recovered > 0) {
 }
 
 // Recover stale conversations that are stuck in 'active' state
-const staleConvs = recoverStaleConversations();
-if (staleConvs > 0) {
-    log('INFO', `Marked ${staleConvs} stale conversation(s) as completed`);
+const staleConvDetails = getStaleConversations();
+if (staleConvDetails.length > 0) {
+    log('WARN', `🔴 CRASH RECOVERY: ${staleConvDetails.length} conversation(s) stuck for 10+ min, marking completed (DATA LOSS RISK)`);
+    staleConvDetails.forEach(conv => {
+        log('WARN', `  - Team ${conv.teamId}, Conv ${conv.id}: stuck for ${(conv.duration / 60000).toFixed(1)} min`);
+        emitEvent('crash_recovery', {
+            conversationId: conv.id,
+            teamId: conv.teamId,
+            stuckForMs: conv.duration,
+            recoveredAt: new Date().toISOString(),
+        });
+    });
 }
+const staleConvs = recoverStaleConversations();
 
 // Start heartbeat monitoring
 startHeartbeat();
@@ -656,8 +666,19 @@ setInterval(() => {
     const msgCount = recoverStaleMessages();
     if (msgCount > 0) log('INFO', `Recovered ${msgCount} stale message(s)`);
 
+    const convStaleDetails = getStaleConversations();
+    if (convStaleDetails.length > 0) {
+        log('WARN', `🔴 PERIODIC RECOVERY: ${convStaleDetails.length} conversation(s) marked completed (POSSIBLE DATA LOSS)`);
+        convStaleDetails.forEach(conv => {
+            emitEvent('crash_recovery', {
+                conversationId: conv.id,
+                teamId: conv.teamId,
+                stuckForMs: conv.duration,
+                source: 'periodic',
+            });
+        });
+    }
     const convCount = recoverStaleConversations();
-    if (convCount > 0) log('INFO', `Marked ${convCount} stale conversation(s) as completed`);
 }, 5 * 60 * 1000); // every 5 min
 
 setInterval(() => {

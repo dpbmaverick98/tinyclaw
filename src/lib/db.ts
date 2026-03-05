@@ -650,7 +650,7 @@ export function loadPendingAgents(conversationId: string): string[] {
  *
  * Returns number of conversations recovered.
  */
-export function recoverStaleConversations(stalethresholdMs = 30 * 60 * 1000): number {
+export function recoverStaleConversations(stalethresholdMs = 10 * 60 * 1000): number {
     const cutoff = Date.now() - stalethresholdMs;
     const result = getDb().prepare(`
         UPDATE conversations
@@ -658,6 +658,29 @@ export function recoverStaleConversations(stalethresholdMs = 30 * 60 * 1000): nu
         WHERE status = 'active' AND updated_at < ?
     `).run(cutoff);
     return result.changes;
+}
+
+/**
+ * Get details of stale conversations for crash recovery logging.
+ * Returns conversations that haven't been updated in the specified time.
+ */
+export function getStaleConversations(staleThresholdMs = 10 * 60 * 1000): Array<{
+    id: string;
+    teamId: string;
+    duration: number;
+}> {
+    const cutoff = Date.now() - staleThresholdMs;
+    const rows = getDb().prepare(`
+        SELECT id, team_id, (? - updated_at) as duration_ms
+        FROM conversations
+        WHERE status = 'active' AND updated_at < ?
+    `).all(Date.now(), cutoff) as Array<{ id: string; team_id: string; duration_ms: number }>;
+
+    return rows.map(row => ({
+        id: row.id,
+        teamId: row.team_id,
+        duration: row.duration_ms,
+    }));
 }
 
 /**
