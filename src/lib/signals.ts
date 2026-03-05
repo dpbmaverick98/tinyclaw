@@ -65,11 +65,19 @@ export function watchChannel(
 /**
  * Clear signal for a channel.
  * Called by channel client after processing responses.
+ *
+ * Handles race condition where two processes try to delete simultaneously:
+ * First process deletes file successfully, second gets ENOENT which we ignore.
  */
 export function clearSignal(channel: string): void {
     const signalFile = path.join(SIGNALS_DIR, `${channel}.ready`);
-    if (fs.existsSync(signalFile)) {
+    try {
         fs.unlinkSync(signalFile);
+    } catch (error: any) {
+        // Ignore ENOENT: file already deleted by another process
+        if (error?.code !== 'ENOENT') {
+            throw error;
+        }
     }
 }
 
