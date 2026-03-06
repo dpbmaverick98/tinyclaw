@@ -23,24 +23,17 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-// Agent status indicator component
-function StatusDot({ status }: { status: "online" | "busy" | "offline" }) {
-  const colors = {
-    online: "bg-[var(--agent-online)]",
-    busy: "bg-[var(--agent-busy)]",
-    offline: "bg-[var(--agent-offline)]",
-  };
-  return (
-    <span className={cn("h-1.5 w-1.5 rounded-full", colors[status])} />
-  );
-}
-
-// Mock status for now - will be replaced with real status from API
-function useAgentStatus(agentId: string): "online" | "busy" | "offline" {
-  // TODO: Replace with real status from API
-  const statuses: ("online" | "busy" | "offline")[] = ["online", "online", "busy", "offline"];
-  return statuses[agentId.length % 4] || "offline";
-}
+// Agent status indicator - disabled until real status API available
+// function StatusDot({ status }: { status: "online" | "busy" | "offline" }) {
+//   const colors = {
+//     online: "bg-[var(--agent-online)]",
+//     busy: "bg-[var(--agent-busy)]",
+//     offline: "bg-[var(--agent-offline)]",
+//   };
+//   return (
+//     <span className={cn("h-1.5 w-1.5 rounded-full", colors[status])} />
+//   );
+// }
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -145,7 +138,6 @@ export function Sidebar() {
               <CollapsibleContent>
                 <div className="space-y-0.5 pt-1">
                   {filteredAgents.map(([id, agent]) => {
-                    const status = useAgentStatus(id);
                     const href = `/chat/agent/${id}`;
                     const active = pathname === href;
                     const unread = useChatStore((state) => state.getUnreadCount(id));
@@ -161,7 +153,6 @@ export function Sidebar() {
                             : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
                         )}
                       >
-                        <StatusDot status={status} />
                         <Hash className="h-3 w-3 text-[var(--text-tertiary)]" />
                         <span className="flex-1 truncate">{agent.name}</span>
                         {unread > 0 && (
