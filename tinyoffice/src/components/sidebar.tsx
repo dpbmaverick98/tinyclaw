@@ -41,6 +41,8 @@ export function Sidebar() {
   const { data: agents } = usePolling<Record<string, AgentConfig>>(getAgents, 5000);
   const { data: teams } = usePolling<Record<string, TeamConfig>>(getTeams, 5000);
   const totalUnread = useChatStore((state) => state.getTotalUnreadCount());
+  // Read threads once at top level to avoid hooks-in-loop violation
+  const threads = useChatStore((state) => state.threads);
   
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [teamsOpen, setTeamsOpen] = useState(false);
@@ -63,6 +65,9 @@ export function Sidebar() {
     if (href === "/") return pathname === "/";
     return pathname.startsWith(href);
   };
+
+  // Helper to get unread count from cached threads (not a hook)
+  const getUnreadCount = (threadId: string) => threads[threadId]?.unreadCount || 0;
 
   return (
     <aside className="flex h-screen w-60 flex-col border-r border-[var(--border)] bg-[var(--background)]">
@@ -139,7 +144,7 @@ export function Sidebar() {
                   {filteredAgents.map(([id, agent]) => {
                     const href = `/chat/agent/${id}`;
                     const active = pathname === href;
-                    const unread = useChatStore((state) => state.getUnreadCount(id));
+                    const unread = getUnreadCount(id);
                     
                     return (
                       <Link
@@ -190,7 +195,7 @@ export function Sidebar() {
                   {filteredTeams.map(([id, team]) => {
                     const href = `/chat/team/${id}`;
                     const active = pathname === href;
-                    const unread = useChatStore((state) => state.getUnreadCount(id));
+                    const unread = getUnreadCount(id);
                     
                     return (
                       <Link
