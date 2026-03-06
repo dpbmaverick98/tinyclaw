@@ -225,7 +225,7 @@ export function initQueueDb(): void {
             ack_deadline INTEGER NOT NULL,
             response_deadline INTEGER NOT NULL,
             retry_count INTEGER NOT NULL DEFAULT 0,
-            max_retries INTEGER NOT NULL DEFAULT 3,
+            max_retries INTEGER NOT NULL DEFAULT 5,
             created_at INTEGER NOT NULL,
             acked_at INTEGER,
             responded_at INTEGER,
