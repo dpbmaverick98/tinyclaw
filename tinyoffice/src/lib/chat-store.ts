@@ -1,6 +1,48 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+// UUID generator for message IDs (no collision risk)
+function generateId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for older browsers
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+// Storage quota checker (4MB limit for localStorage)
+const STORAGE_LIMIT = 4 * 1024 * 1024;
+const STORAGE_WARNING = 3 * 1024 * 1024;
+
+function checkStorageSize(): { ok: boolean; size: number; warning: boolean } {
+  try {
+    const item = localStorage.getItem('tinyclaw-chat-storage');
+    const size = item ? new Blob([item]).size : 0;
+    return {
+      ok: size < STORAGE_LIMIT,
+      size,
+      warning: size > STORAGE_WARNING,
+    };
+  } catch {
+    return { ok: true, size: 0, warning: false };
+  }
+}
+
+function pruneOldMessages(threads: Record<string, ChatThread>): Record<string, ChatThread> {
+  const pruned: Record<string, ChatThread> = {};
+  
+  for (const [id, thread] of Object.entries(threads)) {
+    // Keep only last 100 messages per thread
+    const messages = thread.messages.slice(-100);
+    pruned[id] = {
+      ...thread,
+      messages,
+    };
+  }
+  
+  return pruned;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'agent' | 'system';
@@ -69,7 +111,7 @@ export const useChatStore = create<ChatStore>()(
 
         const newMessage: ChatMessage = {
           ...message,
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          id: generateId(),
           timestamp: Date.now(),
         };
 
@@ -165,6 +207,34 @@ export const useChatStore = create<ChatStore>()(
     {
       name: 'tinyclaw-chat-storage',
       version: 1,
+      migrate: (persistedState: unknown, version: number) => {
+        // Migration from version 0 to 1
+        if (version === 0) {
+          // Ensure threads object exists
+          const state = persistedState as { threads?: Record<string, ChatThread> };
+          return {
+            threads: state.threads || {},
+            activeThreadId: null,
+          };
+        }
+        return persistedState;
+      },
+      onRehydrateStorage: () => {
+        return (state) => {
+          if (!state) return;
+          
+          // Check storage size and prune if needed
+          const { ok, warning, size } = checkStorageSize();
+          
+          if (!ok) {
+            console.warn(`[ChatStore] Storage exceeded limit (${size} bytes). Pruning old messages...`);
+            const pruned = pruneOldMessages(state.threads);
+            state.threads = pruned;
+          } else if (warning) {
+            console.warn(`[ChatStore] Storage approaching limit (${size} bytes)`);
+          }
+        };
+      },
     }
   )
 );
