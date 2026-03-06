@@ -3,18 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveAgent, type AgentConfig } from "@/lib/api";
+import { PROVIDERS } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Bot, Loader2, Check } from "lucide-react";
 import Link from "next/link";
-
-const PROVIDERS = [
-  { value: "anthropic", label: "Anthropic" },
-  { value: "openai", label: "OpenAI" },
-  { value: "opencode", label: "OpenCode" },
-];
 
 export default function NewAgentPage() {
   const router = useRouter();
@@ -133,15 +129,14 @@ export default function NewAgentPage() {
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-[var(--text-secondary)]">
                   Provider *</label>
-                <select
+                <Select
                   value={form.provider}
                   onChange={(e) => setField("provider", e.target.value)}
-                  className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--text-primary)]"
                 >
                   {PROVIDERS.map((p) => (
                     <option key={p.value} value={p.value}>{p.label}</option>
                   ))}
-                </select>
+                </Select>
               </div>
               
               <div className="space-y-1.5">
@@ -175,6 +170,7 @@ export default function NewAgentPage() {
                 onChange={(e) => setField("system_prompt", e.target.value)}
                 placeholder="Custom instructions for this agent (optional)..."
                 rows={3}
+                resize="vertical"
               />
             </div>
             
