@@ -289,7 +289,7 @@ function ActivityRow({ event }: { event: EventData }) {
       <div className="flex-1 min-w-0">
         <p className="text-sm text-[var(--text-primary)] truncate">
           {label}
-          {e.agentId && <span className="text-[var(--text-secondary)]"> @{String(e.agentId)}</span>}
+          {e.agentId ? <span className="text-[var(--text-secondary)]"> @{String(e.agentId)}</span> : null}
         </p>
       </div>
       
