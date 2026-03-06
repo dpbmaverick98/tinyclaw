@@ -66,16 +66,7 @@ export default function InboxPage() {
         </CardHeader>        
         <CardContent>
           {recentThreads.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Inbox className="h-8 w-8 text-[var(--text-tertiary)]" />
-              <p className="mt-3 text-sm text-[var(--text-secondary)]">No conversations yet</p>
-              <Link
-                href="/chat"
-                className="mt-2 text-sm text-[var(--accent-blue)] hover:underline"
-              >
-                Start a new chat
-              </Link>
-            </div>
+            <WelcomeState agents={agents} />
           ) : (
             <div className="space-y-1">
               {recentThreads.map((thread) => (
@@ -188,5 +179,48 @@ function ThreadRow({
         )}
       </div>
     </Link>
+  );
+}
+
+// Welcome state for new users with no conversations
+function WelcomeState({ agents }: { agents?: Record<string, AgentConfig> }) {
+  const agentCount = agents ? Object.keys(agents).length : 0;
+  
+  return (
+    <div className="flex flex-col items-center justify-center py-10 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--surface-hover)]">
+        <MessageSquare className="h-6 w-6 text-[var(--accent-blue)]" />
+      </div>
+      
+      <h3 className="mt-4 font-medium text-[var(--text-primary)]">
+        Welcome to TinyClaw
+      </h3>
+      
+      <p className="mt-1 max-w-sm text-sm text-[var(--text-secondary)]">
+        Your conversations with AI agents will appear here. 
+        Start chatting to see message history.
+      </p>
+      
+      <div className="mt-6 flex flex-col gap-2">
+        {agentCount === 0 ? (
+          <>
+            <p className="text-xs text-[var(--text-tertiary)]">
+              No agents configured yet
+            </p>
+            <Link href="/agents/new">
+              <button className="rounded-md bg-[var(--accent-blue)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-blue-hover)]">
+                Create your first agent
+              </button>
+            </Link>
+          </>
+        ) : (
+          <Link href="/chat">
+            <button className="rounded-md bg-[var(--accent-blue)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-blue-hover)]">
+              Start a conversation
+            </button>
+          </Link>
+        )}
+      </div>
+    </div>
   );
 }
