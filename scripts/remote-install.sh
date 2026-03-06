@@ -12,8 +12,8 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration
-GITHUB_REPO="dpbmaverick98/tinyclaw"
-DEFAULT_BRANCH="sql-experiment"
+GITHUB_REPO="TinyAGI/tinyclaw"
+DEFAULT_BRANCH="main"
 INSTALL_DIR=""
 
 echo ""
