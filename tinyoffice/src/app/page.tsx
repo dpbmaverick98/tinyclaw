@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { getAgents, getTeams, getQueueStatus } from "@/lib/api";
+import { AgentInsights } from "@/components/agent-insights";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Bot, Users, Inbox, Cpu, Activity, ArrowRight, MessageSquare } from "lucide-react";
+import { Bot, Users, Cpu, Activity, ArrowRight, MessageSquare } from "lucide-react";
 
 export default async function DashboardPage() {
   const [agents, teams, queue] = await Promise.all([
@@ -21,7 +21,7 @@ export default async function DashboardPage() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Overview of your multi-agent system</p>
+        <p className="text-muted-foreground">Real-time insights into your multi-agent system</p>
       </div>
 
       {/* Stats */}
@@ -58,13 +58,13 @@ export default async function DashboardPage() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Agent Status */}
-        <Card>
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Agent Insights - Takes 2 columns */}
+        <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Bot className="h-4 w-4 text-primary" />
-              Agent Status
+            <CardTitle className="flex items-center gap-2">
+              <Bot className="h-5 w-5 text-primary" />
+              Agent Insights
             </CardTitle>
             <Link href="/agents">
               <Button variant="ghost" size="sm" className="gap-1">
@@ -74,42 +74,38 @@ export default async function DashboardPage() {
             </Link>
           </CardHeader>
           <CardContent>
-            {agentList.length === 0 ? (
-              <EmptyState
-                icon={Bot}
-                title="No agents configured"
-                description="Create your first agent to get started"
-                action={{ href: "/agents/new", label: "Create agent" }}
-              />
-            ) : (
-              <div className="space-y-3">
-                {agentList.slice(0, 5).map(([id, agent]) => (
-                  <AgentRow key={id} id={id} agent={agent} />
-                ))}
-              </div>
-            )}
+            <AgentInsights agents={agents} />
           </CardContent>
         </Card>
 
-        {/* Recent Activity */}
+        {/* System Status */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Activity className="h-4 w-4 text-primary" />
-              Live Activity
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-primary" />
+              System Status
             </CardTitle>
-            <Link href="/activity">
-              <Button variant="ghost" size="sm" className="gap-1">
-                View all
-                <ArrowRight className="h-3 w-3" />
-              </Button>
-            </Link>
           </CardHeader>
-          <CardContent>
-            <EmptyState
-              icon={Activity}
-              title="Activity feed"
-              description="Real-time agent actions will appear here"
+          <CardContent className="space-y-4">
+            <StatusItem
+              label="Queue Processor"
+              status="online"
+              detail="Active"
+            />
+            <StatusItem
+              label="Incoming Messages"
+              status={queue.incoming > 0 ? "warning" : "online"}
+              detail={`${queue.incoming} pending`}
+            />
+            <StatusItem
+              label="Outgoing Responses"
+              status={queue.outgoing > 0 ? "warning" : "online"}
+              detail={`${queue.outgoing} ready`}
+            />
+            <StatusItem
+              label="Active Conversations"
+              status={queue.activeConversations > 0 ? "active" : "online"}
+              detail={`${queue.activeConversations} ongoing`}
             />
           </CardContent>
         </Card>
@@ -155,66 +151,29 @@ function StatCard({
   );
 }
 
-function AgentRow({
-  id,
-  agent,
+function StatusItem({
+  label,
+  status,
+  detail,
 }: {
-  id: string;
-  agent: { name: string; provider: string; model: string };
+  label: string;
+  status: "online" | "warning" | "active" | "error";
+  detail: string;
 }) {
-  return (
-    <Link href={`/chat/agent/${id}`}>
-      <div className="flex items-center gap-3 rounded-md p-2 transition-colors hover:bg-accent">
-        <Avatar className="h-8 w-8">
-          <AvatarFallback className="bg-secondary text-xs">
-            {agent.name.slice(0, 2).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-        
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{agent.name}</span>
-            <Badge variant="secondary" className="text-xs">
-              {agent.provider}
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground truncate">
-            @{id} • {agent.model}
-          </p>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-green-500" />
-          <ArrowRight className="h-4 w-4 text-muted-foreground" />
-        </div>
-      </div>
-    </Link>
-  );
-}
+  const statusColors = {
+    online: "bg-green-500",
+    warning: "bg-yellow-500",
+    active: "bg-blue-500 animate-pulse",
+    error: "bg-red-500",
+  };
 
-function EmptyState({
-  icon: Icon,
-  title,
-  description,
-  action,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-  action?: { href: string; label: string };
-}) {
   return (
-    <div className="flex flex-col items-center justify-center py-8 text-center">
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary">
-        <Icon className="h-5 w-5 text-muted-foreground" />
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <span className={`h-2 w-2 rounded-full ${statusColors[status]}`} />
+        <span className="text-sm">{label}</span>
       </div>
-      <h3 className="mt-3 font-medium">{title}</h3>
-      <p className="text-sm text-muted-foreground">{description}</p>
-      {action && (
-        <Link href={action.href}>
-          <Button className="mt-3" size="sm">{action.label}</Button>
-        </Link>
-      )}
+      <Badge variant="secondary" className="text-xs">{detail}</Badge>
     </div>
   );
 }
