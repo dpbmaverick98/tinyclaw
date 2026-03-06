@@ -5,6 +5,7 @@ import { usePolling } from "@/lib/hooks";
 import { useChatStore } from "@/lib/chat-store";
 import { getAgents, getTeams, type AgentConfig, type TeamConfig } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Inbox, Bot, Users, ArrowUpRight, MessageSquare } from "lucide-react";
 
@@ -208,16 +209,12 @@ function WelcomeState({ agents }: { agents?: Record<string, AgentConfig> }) {
               No agents configured yet
             </p>
             <Link href="/agents/new">
-              <button className="rounded-md bg-[var(--accent-blue)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-blue-hover)]">
-                Create your first agent
-              </button>
+              <Button>Create your first agent</Button>
             </Link>
           </>
         ) : (
           <Link href="/chat">
-            <button className="rounded-md bg-[var(--accent-blue)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-blue-hover)]">
-              Start a conversation
-            </button>
+            <Button>Start a conversation</Button>
           </Link>
         )}
       </div>

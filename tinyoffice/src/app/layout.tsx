@@ -20,7 +20,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={inter.variable}>
-      <body className={`antialiased ${inter.className}`}>
+      <body className="antialiased">
         <div className="flex h-screen overflow-hidden">
           <Sidebar />
           <main className="flex-1 overflow-hidden">
