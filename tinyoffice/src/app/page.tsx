@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { usePolling, useSSE, timeAgo } from "@/lib/hooks";
+import { useChatStore } from "@/lib/chat-store";
 import {
   getAgents,
   getTeams,
@@ -12,6 +14,7 @@ import {
 } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Bot,
   Users,
@@ -20,260 +23,283 @@ import {
   Send,
   MessageSquare,
   Activity,
+  ArrowRight,
+  Plus,
 } from "lucide-react";
 
 export default function DashboardPage() {
   const { data: agents } = usePolling<Record<string, AgentConfig>>(getAgents, 5000);
   const { data: teams } = usePolling<Record<string, TeamConfig>>(getTeams, 5000);
   const { data: queue } = usePolling<QueueStatus>(getQueueStatus, 2000);
-  const { events } = useSSE(30);
+  const { events } = useSSE(20);
+  const totalUnread = useChatStore((state) => state.getTotalUnreadCount());
 
   const agentCount = agents ? Object.keys(agents).length : 0;
   const teamCount = teams ? Object.keys(teams).length : 0;
+  const onlineAgents = agentCount; // TODO: Real status
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="flex h-full flex-col overflow-y-auto px-6 py-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Real-time overview of your TinyClaw system
-        </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Dashboard</h1>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Overview of your TinyClaw system
+          </p>
+        </div>
+        <Link href="/chat">
+          <Button size="sm">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            New Chat
+          </Button>
+        </Link>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
-          icon={<Bot className="h-4 w-4" />}
+          icon={Bot}
           label="Agents"
           value={agentCount}
-          sub={agentCount === 1 ? "agent configured" : "agents configured"}
+          sub={onlineAgents > 0 ? `${onlineAgents} online` : "No agents online"}
+          href="/agents"
         />
         <StatCard
-          icon={<Users className="h-4 w-4" />}
+          icon={Users}
           label="Teams"
           value={teamCount}
-          sub={teamCount === 1 ? "team active" : "teams active"}
+          sub={teamCount === 1 ? "1 team" : `${teamCount} teams`}
+          href="/teams"
         />
         <StatCard
-          icon={<Inbox className="h-4 w-4" />}
-          label="Queue Incoming"
-          value={queue?.incoming ?? 0}
-          sub="messages waiting"
-          accent={queue != null && queue.incoming > 0}
+          icon={Inbox}
+          label="Unread"
+          value={totalUnread}
+          sub={totalUnread === 1 ? "unread message" : "unread messages"}
+          href="/inbox"
+          accent={totalUnread > 0}
         />
         <StatCard
-          icon={<Cpu className="h-4 w-4" />}
+          icon={Cpu}
           label="Processing"
           value={queue?.processing ?? 0}
           sub="in progress"
-          accent={queue != null && queue.processing > 0}
+          href="/activity"
+          accent={(queue?.processing ?? 0) > 0}
         />
       </div>
 
-      {/* Secondary Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard
-          icon={<Send className="h-4 w-4" />}
-          label="Outgoing"
-          value={queue?.outgoing ?? 0}
-          sub="responses ready"
-        />
-        <StatCard
-          icon={<MessageSquare className="h-4 w-4" />}
-          label="Active Conversations"
-          value={queue?.activeConversations ?? 0}
-          sub="team conversations"
-        />
-        <StatCard
-          icon={<Activity className="h-4 w-4" />}
-          label="Recent Events"
-          value={events.length}
-          sub="events tracked"
-        />
-      </div>
-
-      {/* Agent + Team Overview */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Agents */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bot className="h-4 w-4 text-primary" />
-              Agents
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {agents && Object.keys(agents).length > 0 ? (
-              <div className="space-y-3">
-                {Object.entries(agents).map(([id, agent]) => (
-                  <div
-                    key={id}
-                    className="flex items-center justify-between border-b border-border/50 pb-3 last:border-0 last:pb-0"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center bg-secondary text-xs font-bold uppercase">
-                        {agent.name.slice(0, 2)}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">{agent.name}</p>
-                        <p className="text-xs text-muted-foreground">@{id}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary">{agent.provider}</Badge>
-                      <Badge variant="outline">{agent.model}</Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No agents configured</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Teams */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" />
-              Teams
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {teams && Object.keys(teams).length > 0 ? (
-              <div className="space-y-3">
-                {Object.entries(teams).map(([id, team]) => (
-                  <div
-                    key={id}
-                    className="flex items-center justify-between border-b border-border/50 pb-3 last:border-0 last:pb-0"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{team.name}</p>
-                      <p className="text-xs text-muted-foreground">@{id}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">
-                        {team.agents.length} agent{team.agents.length !== 1 ? "s" : ""}
-                      </Badge>
-                      <Badge variant="secondary">lead: @{team.leader_agent}</Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No teams configured</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Event Feed */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-primary" />
-            Live Event Feed
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {events.length > 0 ? (
-            <div className="space-y-2 max-h-80 overflow-y-auto">
-              {events.map((event, i) => (
-                <div
-                  key={`${event.timestamp}-${i}`}
-                  className="flex items-start gap-3 border-b border-border/50 pb-2 last:border-0 last:pb-0 animate-slide-up"
-                >
-                  <EventDot type={event.type} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {formatEventType(event.type)}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {formatEventDetail(event)}
-                    </p>
-                  </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {timeAgo(event.timestamp)}
-                  </span>
-                </div>
-              ))}
+      {/* Two Column Layout */}
+      <div className="grid flex-1 gap-6 lg:grid-cols-2">
+        {/* Recent Activity */}
+        <Card className="flex flex-col">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-[var(--accent-blue)]" />
+              <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No events yet. Send a message to get started.</p>
-          )}
-        </CardContent>
-      </Card>
+            <Link href="/activity">
+              <Button variant="ghost" size="sm" className="h-7 text-xs">
+                View all
+                <ArrowRight className="ml-1 h-3 w-3" />
+              </Button>
+            </Link>
+          </CardHeader>
+          
+          <CardContent className="flex-1">
+            {events.length > 0 ? (
+              <div className="space-y-1">
+                {events.slice(0, 8).map((event, i) => (
+                  <ActivityRow key={`${event.timestamp}-${i}`} event={event} />
+                ))}
+              </div>
+            ) : (
+              <div className="flex h-32 flex-col items-center justify-center text-center">
+                <p className="text-sm text-[var(--text-tertiary)]">No recent activity</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Quick Access */}
+        <div className="space-y-4">
+          {/* Agents Preview */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Bot className="h-4 w-4 text-[var(--accent-blue)]" />
+                  <CardTitle className="text-sm font-medium">Agents</CardTitle>
+                </div>
+                <Link href="/agents">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs">
+                    Manage
+                    <ArrowRight className="ml-1 h-3 w-3" />
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            
+            <CardContent>
+              {agents && Object.keys(agents).length > 0 ? (
+                <div className="space-y-1">
+                  {Object.entries(agents).slice(0, 5).map(([id, agent]) => (
+                    <Link
+                      key={id}
+                      href={`/chat/agent/${id}`}
+                      className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-[var(--surface-hover)]"
+                    >
+                      <div className="flex h-6 w-6 items-center justify-center rounded bg-[var(--surface-hover)] text-[10px] font-medium">
+                        {agent.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <span className="flex-1 text-sm text-[var(--text-primary)]">{agent.name}</span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {agent.provider}
+                      </Badge>
+                    </Link>
+                  ))}
+                  {Object.keys(agents).length > 5 && (
+                    <p className="px-2 text-xs text-[var(--text-tertiary)]">
+                      +{Object.keys(agents).length - 5} more
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-[var(--text-tertiary)]">No agents configured</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Teams Preview */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-[var(--accent-blue)]" />
+                  <CardTitle className="text-sm font-medium">Teams</CardTitle>
+                </div>
+                <Link href="/teams">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs">
+                    Manage
+                    <ArrowRight className="ml-1 h-3 w-3" />
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            
+            <CardContent>
+              {teams && Object.keys(teams).length > 0 ? (
+                <div className="space-y-1">
+                  {Object.entries(teams).slice(0, 5).map(([id, team]) => (
+                    <Link
+                      key={id}
+                      href={`/chat/team/${id}`}
+                      className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-[var(--surface-hover)]"
+                    >
+                      <div className="flex h-6 w-6 items-center justify-center rounded bg-[var(--surface-hover)]">
+                        <Users className="h-3 w-3 text-[var(--text-secondary)]" />
+                      </div>
+                      <span className="flex-1 text-sm text-[var(--text-primary)]">{team.name}</span>
+                      <span className="text-xs text-[var(--text-tertiary)]">
+                        {team.agents.length} agents
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-[var(--text-tertiary)]">No teams configured</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
 
 function StatCard({
-  icon,
+  icon: Icon,
   label,
   value,
   sub,
+  href,
   accent,
 }: {
-  icon: React.ReactNode;
+  icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: number;
   sub: string;
+  href: string;
   accent?: boolean;
 }) {
   return (
-    <Card>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">{icon}</span>
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            {label}
-          </span>
-        </div>
-        <div className="mt-3">
-          <span className={`text-3xl font-bold tabular-nums ${accent ? "text-primary" : ""}`}>
-            {value}
-          </span>
-          <p className="text-xs text-muted-foreground mt-1">{sub}</p>
-        </div>
-      </CardContent>
-    </Card>
+    <Link href={href}>
+      <Card className={cn(
+        "transition-colors hover:border-[var(--border-hover)]",
+        accent && "border-[var(--accent-blue)]/30"
+      )}>
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between">
+            <div className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-md",
+              accent ? "bg-[var(--accent-blue)]/10" : "bg-[var(--surface-hover)]"
+            )}>
+              <Icon className={cn("h-4 w-4", accent ? "text-[var(--accent-blue)]" : "text-[var(--text-secondary)]")} />
+            </div>
+            <span className="text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide">
+              {label}
+            </span>
+          </div>
+          
+          <div className="mt-2">
+            <span className={cn(
+              "text-2xl font-semibold",
+              accent ? "text-[var(--accent-blue)]" : "text-[var(--text-primary)]"
+            )}>
+              {value}
+            </span>
+            <p className="text-xs text-[var(--text-tertiary)]">{sub}</p>
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
 
-function EventDot({ type }: { type: string }) {
-  const colors: Record<string, string> = {
-    message_received: "bg-blue-500",
-    agent_routed: "bg-primary",
-    chain_step_start: "bg-yellow-500",
-    chain_step_done: "bg-green-500",
-    response_ready: "bg-emerald-500",
-    team_chain_start: "bg-purple-500",
-    team_chain_end: "bg-purple-400",
-    chain_handoff: "bg-orange-500",
-    message_enqueued: "bg-cyan-500",
-    processor_start: "bg-primary",
+function ActivityRow({ event }: { event: EventData }) {
+  const e = event as Record<string, unknown>;
+  
+  const config: Record<string, { color: string; label: string }> = {
+    message_received: { color: "bg-blue-500", label: "Message" },
+    agent_routed: { color: "bg-[var(--accent-blue)]", label: "Routed" },
+    chain_step_start: { color: "bg-yellow-500", label: "Started" },
+    chain_step_done: { color: "bg-green-500", label: "Done" },
+    response_ready: { color: "bg-green-400", label: "Response" },
+    team_chain_start: { color: "bg-purple-500", label: "Team" },
+    team_chain_end: { color: "bg-purple-400", label: "Team Done" },
   };
+  
+  const { color, label } = config[event.type] || { color: "bg-[var(--text-tertiary)]", label: event.type };
+  
   return (
-    <div className={`mt-1.5 h-2 w-2 shrink-0 ${colors[type] || "bg-muted-foreground"}`} />
+    <div className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-[var(--surface-hover)]">
+      <span className={cn("h-1.5 w-1.5 rounded-full", color)} />
+      
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-[var(--text-primary)] truncate">
+          {label}
+          {e.agentId && <span className="text-[var(--text-secondary)]"> @{String(e.agentId)}</span>}
+        </p>
+      </div>
+      
+      <span className="text-xs text-[var(--text-tertiary)] whitespace-nowrap">
+        {timeAgo(event.timestamp)}
+      </span>
+    </div>
   );
 }
 
-function formatEventType(type: string): string {
-  return type
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function formatEventDetail(event: EventData): string {
-  const parts: string[] = [];
-  if (event.agentId) parts.push(`@${event.agentId}`);
-  if (event.agentName) parts.push(`(${event.agentName})`);
-  if (event.channel) parts.push(`[${event.channel}]`);
-  if (event.sender) parts.push(`from ${event.sender}`);
-  if (event.teamId) parts.push(`team:${event.teamId}`);
-  if (event.message) parts.push(String(event.message).substring(0, 60));
-  if (event.responseLength) parts.push(`${event.responseLength} chars`);
-  return parts.join(" ") || event.type;
+function cn(...classes: (string | undefined | false)[]) {
+  return classes.filter(Boolean).join(" ");
 }
