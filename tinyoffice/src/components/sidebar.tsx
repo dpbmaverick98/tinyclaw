@@ -4,211 +4,289 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { usePolling } from "@/lib/hooks";
+import { useChatStore } from "@/lib/chat-store";
+import { getAgents, getTeams, type AgentConfig, type TeamConfig } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  getAgents, getTeams, type AgentConfig, type TeamConfig,
-} from "@/lib/api";
-import {
-  Zap, Plus, Users, LayoutDashboard, ScrollText,
-  Settings, SlidersHorizontal, ClipboardList, Building2,
+  Plus,
+  LayoutDashboard,
+  Inbox,
+  ClipboardList,
+  Settings,
+  ChevronDown,
+  Hash,
+  Users,
+  MessageSquare,
+  Bot,
+  Search,
 } from "lucide-react";
+import { useState } from "react";
+
+// Agent status indicator component
+function StatusDot({ status }: { status: "online" | "busy" | "offline" }) {
+  const colors = {
+    online: "bg-[var(--agent-online)]",
+    busy: "bg-[var(--agent-busy)]",
+    offline: "bg-[var(--agent-offline)]",
+  };
+  return (
+    <span className={cn("h-1.5 w-1.5 rounded-full", colors[status])} />
+  );
+}
+
+// Mock status for now - will be replaced with real status from API
+function useAgentStatus(agentId: string): "online" | "busy" | "offline" {
+  // TODO: Replace with real status from API
+  const statuses: ("online" | "busy" | "offline")[] = ["online", "online", "busy", "offline"];
+  return statuses[agentId.length % 4] || "offline";
+}
 
 export function Sidebar() {
   const pathname = usePathname();
   const { data: agents } = usePolling<Record<string, AgentConfig>>(getAgents, 5000);
   const { data: teams } = usePolling<Record<string, TeamConfig>>(getTeams, 5000);
+  const totalUnread = useChatStore((state) => state.getTotalUnreadCount());
+  
+  const [agentsOpen, setAgentsOpen] = useState(false);
+  const [teamsOpen, setTeamsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const agentEntries = agents ? Object.entries(agents) : [];
   const teamEntries = teams ? Object.entries(teams) : [];
+  
+  const filteredAgents = agentEntries.filter(([id, agent]) =>
+    agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    id.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  
+  const filteredTeams = teamEntries.filter(([id, team]) =>
+    team.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    id.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const isActive = (href: string) => {
+    if (href === "/") return pathname === "/";
+    return pathname.startsWith(href);
+  };
 
   return (
-    <aside className="flex h-screen w-64 flex-col border-r bg-card">
+    <aside className="flex h-screen w-[240px] flex-col border-r border-[var(--border)] bg-[var(--background)]">
       {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 pt-4 pb-2">
-        <div className="flex h-7 w-7 items-center justify-center bg-primary text-primary-foreground">
-          <Zap className="h-3.5 w-3.5" />
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--accent-blue)]">
+          <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
         </div>
-        <span className="text-sm font-bold tracking-tight">TinyClaw</span>
+        <span className="font-semibold text-[var(--text-primary)]">TinyClaw</span>
       </div>
 
-      {/* New Chat + Dashboard + Logs */}
-      <div className="px-3 pt-2 pb-1 space-y-0.5">
-        <Link
-          href="/console"
-          className={cn(
-            "flex items-center gap-2 w-full px-3 py-2 text-sm font-medium border transition-colors",
-            pathname === "/console"
-              ? "border-primary/50 bg-primary/10 text-foreground"
-              : "border-border hover:border-primary/30 hover:bg-muted text-muted-foreground"
-          )}
-        >
-          <Plus className="h-4 w-4" />
-          New Chat
+      {/* New Chat Button */}
+      <div className="px-3 pb-2">
+        <Link href="/chat">
+          <Button className="w-full justify-start gap-2" size="sm">
+            <Plus className="h-4 w-4" />
+            New Chat
+          </Button>
         </Link>
-        {[
-          { href: "/", label: "Dashboard", icon: LayoutDashboard },
-          { href: "/office", label: "Office", icon: Building2 },
-          { href: "/tasks", label: "Tasks", icon: ClipboardList },
-          { href: "/logs", label: "Logs", icon: ScrollText },
-        ].map(({ href, label, icon: Icon }) => {
-          const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-2.5 px-3 py-1.5 text-sm transition-colors",
-                active
-                  ? "text-foreground bg-accent"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              )}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </Link>
-          );
-        })}
       </div>
 
-      {/* Scrollable agent/team list */}
-      <div className="flex-1 overflow-y-auto px-3 pb-2">
-        {/* Agents */}
-        <div className="pt-3">
-          <div className="flex items-center justify-between px-2 mb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Agents
-            </span>
-            <Link
-              href="/agents"
-              className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
-              title="Manage agents"
-            >
-              <SlidersHorizontal className="h-3 w-3" />
-            </Link>
-          </div>
-          <div className="space-y-0.5">
-            {agentEntries.length > 0 ? (
-              agentEntries.map(([id, agent]) => {
-                const href = `/chat/agent/${id}`;
-                const active = pathname === href;
-                return (
-                  <Link
-                    key={id}
-                    href={href}
-                    className={cn(
-                      "flex items-center gap-2.5 px-2 py-1.5 text-sm transition-colors group",
-                      active
-                        ? "bg-accent text-accent-foreground"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <div className={cn(
-                      "flex h-6 w-6 items-center justify-center text-[10px] font-bold uppercase shrink-0",
-                      active ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"
-                    )}>
-                      {agent.name.slice(0, 2)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm leading-tight">{agent.name}</p>
-                      <p className="truncate text-[10px] text-muted-foreground leading-tight">
-                        {agent.provider}/{agent.model}
-                      </p>
-                    </div>
-                  </Link>
-                );
-              })
-            ) : (
-              <Link
-                href="/agents"
-                className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Plus className="h-3 w-3" />
-                Add agent
-              </Link>
-            )}
-          </div>
+      {/* Search */}
+      <div className="px-3 pb-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-tertiary)]" />
+          <input
+            type="text"
+            placeholder="Search..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-7 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] pl-8 pr-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-blue)]"
+          />
         </div>
+      </div>
 
-        {/* Teams */}
+      {/* Main Navigation */}
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-1">
+        <NavItem href="/" icon={LayoutDashboard} active={isActive("/")}>
+          Dashboard
+        </NavItem>
+        
+        <NavItem href="/inbox" icon={Inbox} active={isActive("/inbox")} badge={totalUnread > 0 ? totalUnread : undefined}>
+          Inbox
+        </NavItem>
+        
+        <NavItem href="/tasks" icon={ClipboardList} active={isActive("/tasks")}>
+          Tasks
+        </NavItem>
+
+        {/* Workspace Section */}
         <div className="pt-4">
-          <div className="flex items-center justify-between px-2 mb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Teams
-            </span>
-            <Link
-              href="/teams"
-              className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
-              title="Manage teams"
-            >
-              <SlidersHorizontal className="h-3 w-3" />
-            </Link>
-          </div>
-          <div className="space-y-0.5">
-            {teamEntries.length > 0 ? (
-              teamEntries.map(([id, team]) => {
-                const href = `/chat/team/${id}`;
-                const active = pathname === href;
-                return (
-                  <Link
-                    key={id}
-                    href={href}
-                    className={cn(
-                      "flex items-center gap-2.5 px-2 py-1.5 text-sm transition-colors group",
-                      active
-                        ? "bg-accent text-accent-foreground"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <div className={cn(
-                      "flex h-6 w-6 items-center justify-center shrink-0",
-                      active ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"
-                    )}>
-                      <Users className="h-3 w-3" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm leading-tight">{team.name}</p>
-                      <p className="truncate text-[10px] text-muted-foreground leading-tight">
-                        {team.agents.length} agent{team.agents.length !== 1 ? "s" : ""}
-                      </p>
-                    </div>
-                  </Link>
-                );
-              })
-            ) : (
-              <Link
-                href="/teams"
-                className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Plus className="h-3 w-3" />
-                Add team
-              </Link>
-            )}
-          </div>
+          <SectionHeader>Workspace</SectionHeader>
+          
+          <NavItem href="/activity" icon={MessageSquare} active={isActive("/activity")}>
+            Activity
+          </NavItem>
+          
+          <NavItem href="/settings" icon={Settings} active={isActive("/settings")}>
+            Settings
+          </NavItem>
         </div>
-      </div>
 
-      {/* Bottom: Settings only */}
-      <div className="border-t px-3 py-2">
-        <Link
-          href="/settings"
-          className={cn(
-            "flex items-center gap-2.5 px-2 py-1.5 text-sm transition-colors",
-            pathname.startsWith("/settings")
-              ? "text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <Settings className="h-3.5 w-3.5" />
-          Settings
-        </Link>
-      </div>
+        {/* Agents Section */}
+        {agentEntries.length > 0 && (
+          <div className="pt-4">
+            <Collapsible open={agentsOpen} onOpenChange={setAgentsOpen}>
+              <CollapsibleTrigger className="flex w-full items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
+                <span>Agents</span>
+                <ChevronDown className={cn("h-3 w-3 transition-transform", agentsOpen && "rotate-180")} />
+              </CollapsibleTrigger>
+              
+              <CollapsibleContent>
+                <div className="space-y-0.5 pt-1">
+                  {filteredAgents.map(([id, agent]) => {
+                    const status = useAgentStatus(id);
+                    const href = `/chat/agent/${id}`;
+                    const active = pathname === href;
+                    const unread = useChatStore((state) => state.getUnreadCount(id));
+                    
+                    return (
+                      <Link
+                        key={id}
+                        href={href}
+                        className={cn(
+                          "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                          active
+                            ? "bg-[var(--surface-hover)] text-[var(--text-primary)]"
+                            : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                        )}
+                      >
+                        <StatusDot status={status} />
+                        <Hash className="h-3 w-3 text-[var(--text-tertiary)]" />
+                        <span className="flex-1 truncate">{agent.name}</span>
+                        {unread > 0 && (
+                          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent-blue)] px-1 text-[10px] font-medium text-white">
+                            {unread}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                  
+                  <Link
+                    href="/agents"
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>Add agent</span>
+                  </Link>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        )}
 
-      {/* Status */}
-      <div className="px-4 py-3 border-t">
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-          <div className="h-1.5 w-1.5 animate-pulse-dot bg-primary" />
+        {/* Teams Section */}
+        {teamEntries.length > 0 && (
+          <div className="pt-4">
+            <Collapsible open={teamsOpen} onOpenChange={setTeamsOpen}>
+              <CollapsibleTrigger className="flex w-full items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
+                <span>Teams</span>
+                <ChevronDown className={cn("h-3 w-3 transition-transform", teamsOpen && "rotate-180")} />
+              </CollapsibleTrigger>
+              
+              <CollapsibleContent>
+                <div className="space-y-0.5 pt-1">
+                  {filteredTeams.map(([id, team]) => {
+                    const href = `/chat/team/${id}`;
+                    const active = pathname === href;
+                    const unread = useChatStore((state) => state.getUnreadCount(id));
+                    
+                    return (
+                      <Link
+                        key={id}
+                        href={href}
+                        className={cn(
+                          "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                          active
+                            ? "bg-[var(--surface-hover)] text-[var(--text-primary)]"
+                            : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                        )}
+                      >
+                        <Users className="h-3 w-3 text-[var(--text-tertiary)]" />
+                        <span className="flex-1 truncate">{team.name}</span>
+                        {unread > 0 && (
+                          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent-blue)] px-1 text-[10px] font-medium text-white">
+                            {unread}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                  
+                  <Link
+                    href="/teams"
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>Add team</span>
+                  </Link>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        )}
+      </nav>
+
+      {/* Bottom Status */}
+      <div className="border-t border-[var(--border)] px-4 py-3">
+        <div className="flex items-center gap-2 text-[10px] text-[var(--text-tertiary)]">
+          <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-[var(--accent-green)]" />
           Queue Processor Active
         </div>
       </div>
     </aside>
+  );
+}
+
+function NavItem({
+  href,
+  icon: Icon,
+  children,
+  active,
+  badge,
+}: {
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+  active?: boolean;
+  badge?: number;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+        active
+          ? "bg-[var(--surface-hover)] text-[var(--text-primary)]"
+          : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="flex-1">{children}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent-blue)] px-1 text-[10px] font-medium text-white">
+          {badge}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+      {children}
+    </div>
   );
 }
