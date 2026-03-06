@@ -2,10 +2,19 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 export interface TextareaProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
+  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  resize?: "none" | "vertical" | "horizontal" | "both";
+}
 
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, ...props }, ref) => {
+  ({ className, resize = "none", ...props }, ref) => {
+    const resizeClass = {
+      none: "resize-none",
+      vertical: "resize-y",
+      horizontal: "resize-x",
+      both: "resize",
+    }[resize];
+
     return (
       <textarea
         className={cn(
@@ -13,7 +22,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           "placeholder:text-[var(--text-tertiary)]",
           "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-blue)] focus-visible:border-[var(--accent-blue)]",
           "disabled:cursor-not-allowed disabled:opacity-50",
-          "resize-none",
+          resizeClass,
           className
         )}
         ref={ref}
