@@ -196,7 +196,7 @@ async function handleTeamResponse(
                         toAgent: mention.teammateId
                     });
 
-                    const internalMsg = `[Message from teammate @${agentId}]:\n${mention.message}`;
+                    const internalMsg = `[Message from teammate @${agentId} — respond using [@${agentId}: your reply]]:\n${mention.message}`;
                     enqueueInternalMessage(conv.id, agentId, mention.teammateId, internalMsg, {
                         channel: dbMsg.channel,
                         sender: dbMsg.sender,
