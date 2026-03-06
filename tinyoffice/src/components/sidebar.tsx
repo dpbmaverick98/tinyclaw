@@ -20,6 +20,7 @@ import {
   MessageSquare,
   Bot,
   Search,
+  Zap,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -64,13 +65,11 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex h-screen w-[240px] flex-col border-r border-[var(--border)] bg-[var(--background)]">
+    <aside className="flex h-screen w-60 flex-col border-r border-[var(--border)] bg-[var(--background)]">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--accent-blue)]">
-          <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
+          <Zap className="h-4 w-4 text-white" />
         </div>
         <span className="font-semibold text-[var(--text-primary)]">TinyClaw</span>
       </div>
