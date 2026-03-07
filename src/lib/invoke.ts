@@ -2,9 +2,10 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { AgentConfig, TeamConfig } from './types';
-import { SCRIPT_DIR, resolveClaudeModel, resolveCodexModel, resolveOpenCodeModel } from './config';
+import { SCRIPT_DIR, TINYCLAW_HOME, resolveClaudeModel, resolveCodexModel, resolveOpenCodeModel, resolveApiKey, getProviderBaseUrl, providerRequiresApiKey } from './config';
 import { log } from './logging';
 import { ensureAgentDirectory, updateAgentTeammates } from './agent';
+import { getSettings } from './config';
 
 export async function runCommand(command: string, args: string[], cwd?: string): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -156,6 +157,98 @@ export async function invokeAgent(
         }
 
         return response || 'Sorry, I could not generate a response from OpenCode.';
+    } else if (provider === 'kimi' || provider === 'minimax') {
+        // Kimi/MiniMax - Claude Code with custom API endpoint
+        const providerName = provider === 'kimi' ? 'Kimi' : 'MiniMax';
+        log('INFO', `Using ${providerName} provider (agent: ${agentId})`);
+
+        const continueConversation = !shouldReset;
+
+        if (shouldReset) {
+            log('INFO', `🔄 Resetting ${providerName} conversation for agent: ${agentId}`);
+        }
+
+        // Resolve API key with two-level fallback
+        const settings = getSettings();
+        const apiKey = resolveApiKey(agent, settings);
+
+        if (!apiKey) {
+            throw new Error(
+                `No API key found for ${providerName}.\n` +
+                `Run: tinyclaw provider ${provider} --api-key <key>\n` +
+                `Or: tinyclaw agent provider ${agentId} ${provider} --api-key <key>`
+            );
+        }
+
+        // Set up environment for Kimi/MiniMax
+        const baseUrl = getProviderBaseUrl(provider);
+        const modelId = agent.model;
+
+        const env: Record<string, string> = {
+            ...process.env as Record<string, string>,
+            ANTHROPIC_AUTH_TOKEN: apiKey,
+            ANTHROPIC_BASE_URL: baseUrl,
+            ANTHROPIC_MODEL: modelId,
+            ANTHROPIC_DEFAULT_SONNET_MODEL: modelId,
+            API_TIMEOUT_MS: '3000000',
+            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+        };
+
+        const claudeArgs = ['--dangerously-skip-permissions'];
+        if (modelId) {
+            claudeArgs.push('--model', modelId);
+        }
+        if (continueConversation) {
+            claudeArgs.push('-c');
+        }
+        claudeArgs.push('-p', message);
+
+        // Run claude with custom env
+        return new Promise((resolve, reject) => {
+            delete env.CLAUDECODE;
+
+            const child = spawn('claude', claudeArgs, {
+                cwd: workingDir,
+                stdio: ['ignore', 'pipe', 'pipe'],
+                env,
+            });
+
+            let stdout = '';
+            let stderr = '';
+
+            child.stdout.setEncoding('utf8');
+            child.stderr.setEncoding('utf8');
+
+            child.stdout.on('data', (chunk: string) => {
+                stdout += chunk;
+            });
+
+            child.stderr.on('data', (chunk: string) => {
+                stderr += chunk;
+            });
+
+            child.on('error', (error) => {
+                reject(error);
+            });
+
+            child.on('close', (code) => {
+                if (code === 0) {
+                    resolve(stdout);
+                    return;
+                }
+                // Check for auth errors in stderr
+                const errorMsg = stderr.trim();
+                if (errorMsg.includes('401') || errorMsg.includes('authentication') || errorMsg.includes('Unauthorized')) {
+                    reject(new Error(
+                        `${providerName} API authentication failed.\n` +
+                        `Your API key may be invalid or expired.\n` +
+                        `Run: tinyclaw provider ${provider} --api-key <new-key>`
+                    ));
+                } else {
+                    reject(new Error(errorMsg || `Command exited with code ${code}`));
+                }
+            });
+        });
     } else {
         // Default to Claude (Anthropic)
         log('INFO', `Using Claude provider (agent: ${agentId})`);
