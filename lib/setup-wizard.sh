@@ -333,8 +333,26 @@ AGENTS_JSON=""
 DEFAULT_AGENT_DIR="$WORKSPACE_PATH/$DEFAULT_AGENT_NAME"
 # Capitalize first letter of agent name (proper bash method)
 DEFAULT_AGENT_DISPLAY="$(tr '[:lower:]' '[:upper:]' <<< "${DEFAULT_AGENT_NAME:0:1}")${DEFAULT_AGENT_NAME:1}"
-AGENTS_JSON='"agents": {'
-AGENTS_JSON="$AGENTS_JSON \"$DEFAULT_AGENT_NAME\": { \"name\": \"$DEFAULT_AGENT_DISPLAY\", \"provider\": \"$PROVIDER\", \"model\": \"$MODEL\", \"working_directory\": \"$DEFAULT_AGENT_DIR\" }"
+
+# Create default agent JSON using jq
+if [ -n "$API_KEY" ] && ([ "$PROVIDER" = "kimi" ] || [ "$PROVIDER" = "minimax" ]); then
+    AGENTS_JSON=$(jq -n \
+        --arg id "$DEFAULT_AGENT_NAME" \
+        --arg name "$DEFAULT_AGENT_DISPLAY" \
+        --arg provider "$PROVIDER" \
+        --arg model "$MODEL" \
+        --arg workdir "$DEFAULT_AGENT_DIR" \
+        --arg apiKey "$API_KEY" \
+        '{($id): {name: $name, provider: $provider, model: $model, working_directory: $workdir, apiKey: $apiKey}}')
+else
+    AGENTS_JSON=$(jq -n \
+        --arg id "$DEFAULT_AGENT_NAME" \
+        --arg name "$DEFAULT_AGENT_DISPLAY" \
+        --arg provider "$PROVIDER" \
+        --arg model "$MODEL" \
+        --arg workdir "$DEFAULT_AGENT_DIR" \
+        '{($id): {name: $name, provider: $provider, model: $model, working_directory: $workdir}}')
+fi
 
 ADDITIONAL_AGENTS=()  # Track additional agent IDs for directory creation
 
@@ -483,13 +501,13 @@ if [[ "$SETUP_AGENTS" =~ ^[yY] ]]; then
     done
 fi
 
-# Build AGENTS_JSON from temp files using jq for safety
+# Merge additional agents into AGENTS_JSON
 if [ -f "${TMPDIR:-/tmp}/tinyclaw_agents_$$.jsonl" ]; then
-    AGENTS_JSON=$(jq -s 'reduce .[] as $item ({}; . * $item)' "${TMPDIR:-/tmp}/tinyclaw_agents_$$.jsonl" | jq -c '.')
+    # Start with default agent, merge additional agents
+    AGENTS_JSON=$(jq -s --argjson default "$AGENTS_JSON" 'reduce .[] as $item ($default; . * $item)' "${TMPDIR:-/tmp}/tinyclaw_agents_$$.jsonl" | jq -c '.')
     rm -f "${TMPDIR:-/tmp}/tinyclaw_agents_$$.jsonl"
-else
-    AGENTS_JSON='{}'
 fi
+# If no additional agents, AGENTS_JSON already contains just the default
 
 # Build enabled channels array JSON
 CHANNELS_JSON="["
@@ -535,7 +553,7 @@ cat > "$SETTINGS_FILE" <<EOF
     },
     "whatsapp": {}
   },
-  ${AGENTS_JSON}
+  "agents": ${AGENTS_JSON},
   ${MODELS_SECTION},
   "monitoring": {
     "heartbeat_interval": ${HEARTBEAT_INTERVAL}
