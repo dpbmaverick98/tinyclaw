@@ -102,13 +102,17 @@ echo ""
 echo "  1) Anthropic (Claude)  (recommended)"
 echo "  2) OpenAI (Codex/GPT)"
 echo "  3) OpenCode"
+echo "  4) Kimi"
+echo "  5) MiniMax"
 echo ""
-read -rp "Choose [1-3]: " PROVIDER_CHOICE
+read -rp "Choose [1-5]: " PROVIDER_CHOICE
 
 case "$PROVIDER_CHOICE" in
     1) PROVIDER="anthropic" ;;
     2) PROVIDER="openai" ;;
     3) PROVIDER="opencode" ;;
+    4) PROVIDER="kimi" ;;
+    5) PROVIDER="minimax" ;;
     *)
         echo -e "${RED}Invalid choice${NC}"
         exit 1
@@ -116,6 +120,50 @@ case "$PROVIDER_CHOICE" in
 esac
 echo -e "${GREEN}✓ Provider: $PROVIDER${NC}"
 echo ""
+
+# API Key collection for providers that require it
+API_KEY=""
+if [ "$PROVIDER" = "kimi" ] || [ "$PROVIDER" = "minimax" ]; then
+    PROVIDER_DISPLAY="$PROVIDER"
+    [ "$PROVIDER" = "kimi" ] && PROVIDER_DISPLAY="Kimi"
+    [ "$PROVIDER" = "minimax" ] && PROVIDER_DISPLAY="MiniMax"
+
+    echo "Enter your $PROVIDER_DISPLAY API key:"
+    echo -e "${YELLOW}(Get one at: https://www.kimi.com/code/console for Kimi, https://platform.minimax.io for MiniMax)${NC}"
+    echo ""
+    read -rp "API Key: " API_KEY
+
+    if [ -z "$API_KEY" ]; then
+        echo -e "${RED}API key is required for $PROVIDER_DISPLAY${NC}"
+        exit 1
+    fi
+
+    # Optional validation (best effort)
+    echo ""
+    echo -e "${BLUE}Validating API key...${NC}"
+    VALIDATION_URL=""
+    [ "$PROVIDER" = "kimi" ] && VALIDATION_URL="https://api.kimi.com/v1/models"
+    [ "$PROVIDER" = "minimax" ] && VALIDATION_URL="https://api.minimax.io/anthropic/v1/models"
+
+    if command -v curl > /dev/null 2>&1; then
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $API_KEY" "$VALIDATION_URL" 2>/dev/null || echo "000")
+        if [ "$HTTP_STATUS" = "200" ]; then
+            echo -e "${GREEN}✓ API key validated${NC}"
+        elif [ "$HTTP_STATUS" = "401" ] || [ "$HTTP_STATUS" = "403" ]; then
+            echo -e "${YELLOW}⚠ Warning: API key appears invalid (HTTP $HTTP_STATUS)${NC}"
+            read -rp "Continue anyway? [y/N]: " CONTINUE_ANYWAY
+            if [[ ! "$CONTINUE_ANYWAY" =~ ^[yY] ]]; then
+                exit 1
+            fi
+        else
+            echo -e "${YELLOW}⚠ Could not validate API key (HTTP $HTTP_STATUS)${NC}"
+            echo -e "${YELLOW}  Continuing anyway...${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠ curl not available, skipping validation${NC}"
+    fi
+    echo ""
+fi
 
 # Model selection based on provider
 if [ "$PROVIDER" = "anthropic" ]; then
@@ -173,6 +221,30 @@ elif [ "$PROVIDER" = "opencode" ]; then
             fi
             ;;
         *) MODEL="opencode/claude-sonnet-4-5" ;;
+    esac
+    echo -e "${GREEN}✓ Model: $MODEL${NC}"
+    echo ""
+elif [ "$PROVIDER" = "kimi" ]; then
+    echo "Which Kimi model?"
+    echo ""
+    echo "  1) kimi2.5  (recommended)"
+    echo ""
+    read -rp "Choose [1]: " MODEL_CHOICE
+
+    case "$MODEL_CHOICE" in
+        *) MODEL="kimi2.5" ;;
+    esac
+    echo -e "${GREEN}✓ Model: $MODEL${NC}"
+    echo ""
+elif [ "$PROVIDER" = "minimax" ]; then
+    echo "Which MiniMax model?"
+    echo ""
+    echo "  1) MiniMax-M2.5  (recommended)"
+    echo ""
+    read -rp "Choose [1]: " MODEL_CHOICE
+
+    case "$MODEL_CHOICE" in
+        *) MODEL="MiniMax-M2.5" ;;
     esac
     echo -e "${GREEN}✓ Model: $MODEL${NC}"
     echo ""
@@ -288,13 +360,60 @@ if [[ "$SETUP_AGENTS" =~ ^[yY] ]]; then
         read -rp "  Display name: " NEW_AGENT_NAME
         [ -z "$NEW_AGENT_NAME" ] && NEW_AGENT_NAME="$NEW_AGENT_ID"
 
-        echo "  Provider: 1) Anthropic  2) OpenAI  3) OpenCode"
-        read -rp "  Choose [1-3, default: 1]: " NEW_PROVIDER_CHOICE
+        echo "  Provider: 1) Anthropic  2) OpenAI  3) OpenCode  4) Kimi  5) MiniMax"
+        read -rp "  Choose [1-5, default: 1]: " NEW_PROVIDER_CHOICE
         case "$NEW_PROVIDER_CHOICE" in
             2) NEW_PROVIDER="openai" ;;
             3) NEW_PROVIDER="opencode" ;;
+            4) NEW_PROVIDER="kimi" ;;
+            5) NEW_PROVIDER="minimax" ;;
             *) NEW_PROVIDER="anthropic" ;;
         esac
+
+        # API Key prompt for kimi/minimax additional agents
+        NEW_API_KEY=""
+        if [ "$NEW_PROVIDER" = "kimi" ] || [ "$NEW_PROVIDER" = "minimax" ]; then
+            PROVIDER_DISPLAY="$NEW_PROVIDER"
+            [ "$NEW_PROVIDER" = "kimi" ] && PROVIDER_DISPLAY="Kimi"
+            [ "$NEW_PROVIDER" = "minimax" ] && PROVIDER_DISPLAY="MiniMax"
+
+            # Check if we have a global key for this provider
+            GLOBAL_KEY=""
+            if [ "$NEW_PROVIDER" = "kimi" ] && [ -n "$API_KEY" ] && [ "$PROVIDER" = "kimi" ]; then
+                GLOBAL_KEY="$API_KEY"
+            elif [ "$NEW_PROVIDER" = "minimax" ] && [ -n "$API_KEY" ] && [ "$PROVIDER" = "minimax" ]; then
+                GLOBAL_KEY="$API_KEY"
+            fi
+
+            if [ -n "$GLOBAL_KEY" ]; then
+                # Show masked global key
+                MASKED_KEY="${GLOBAL_KEY:0:4}...${GLOBAL_KEY: -4}"
+                echo "  Global $PROVIDER_DISPLAY API key found: $MASKED_KEY"
+                read -rp "  Use global key? [Y/n]: " USE_GLOBAL
+                if [[ "$USE_GLOBAL" =~ ^[nN] ]]; then
+                    read -rp "  Enter different API key for this agent: " NEW_API_KEY
+                fi
+            else
+                read -rp "  Enter $PROVIDER_DISPLAY API key for this agent: " NEW_API_KEY
+            fi
+
+            if [ -n "$NEW_API_KEY" ]; then
+                # Validate the new key
+                echo "  Validating API key..."
+                VALIDATION_URL=""
+                [ "$NEW_PROVIDER" = "kimi" ] && VALIDATION_URL="https://api.kimi.com/v1/models"
+                [ "$NEW_PROVIDER" = "minimax" ] && VALIDATION_URL="https://api.minimax.io/anthropic/v1/models"
+
+                if command -v curl > /dev/null 2>&1; then
+                    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $NEW_API_KEY" "$VALIDATION_URL" 2>/dev/null || echo "000")
+                    if [ "$HTTP_STATUS" = "200" ]; then
+                        echo -e "  ${GREEN}✓ API key validated${NC}"
+                    else
+                        echo -e "  ${YELLOW}⚠ Warning: API key validation failed (HTTP $HTTP_STATUS)${NC}"
+                    fi
+                fi
+            fi
+        fi
 
         if [ "$NEW_PROVIDER" = "anthropic" ]; then
             echo "  Model: 1) Sonnet  2) Opus  3) Custom"
@@ -314,6 +433,14 @@ if [[ "$SETUP_AGENTS" =~ ^[yY] ]]; then
                 5) read -rp "  Enter model name (e.g. provider/model): " NEW_MODEL ;;
                 *) NEW_MODEL="opencode/claude-sonnet-4-5" ;;
             esac
+        elif [ "$NEW_PROVIDER" = "kimi" ]; then
+            echo "  Model: 1) kimi2.5"
+            read -rp "  Choose [1]: " NEW_MODEL_CHOICE
+            NEW_MODEL="kimi2.5"
+        elif [ "$NEW_PROVIDER" = "minimax" ]; then
+            echo "  Model: 1) MiniMax-M2.5"
+            read -rp "  Choose [1]: " NEW_MODEL_CHOICE
+            NEW_MODEL="MiniMax-M2.5"
         else
             echo "  Model: 1) GPT-5.3 Codex  2) GPT-5.2  3) Custom"
             read -rp "  Choose [1-3, default: 1]: " NEW_MODEL_CHOICE
@@ -326,7 +453,12 @@ if [[ "$SETUP_AGENTS" =~ ^[yY] ]]; then
 
         NEW_AGENT_DIR="$WORKSPACE_PATH/$NEW_AGENT_ID"
 
-        AGENTS_JSON="$AGENTS_JSON, \"$NEW_AGENT_ID\": { \"name\": \"$NEW_AGENT_NAME\", \"provider\": \"$NEW_PROVIDER\", \"model\": \"$NEW_MODEL\", \"working_directory\": \"$NEW_AGENT_DIR\" }"
+        # Build agent JSON with optional apiKey
+        if [ -n "$NEW_API_KEY" ]; then
+            AGENTS_JSON="$AGENTS_JSON, \"$NEW_AGENT_ID\": { \"name\": \"$NEW_AGENT_NAME\", \"provider\": \"$NEW_PROVIDER\", \"model\": \"$NEW_MODEL\", \"apiKey\": \"$NEW_API_KEY\", \"working_directory\": \"$NEW_AGENT_DIR\" }"
+        else
+            AGENTS_JSON="$AGENTS_JSON, \"$NEW_AGENT_ID\": { \"name\": \"$NEW_AGENT_NAME\", \"provider\": \"$NEW_PROVIDER\", \"model\": \"$NEW_MODEL\", \"working_directory\": \"$NEW_AGENT_DIR\" }"
+        fi
 
         # Track this agent for directory creation later
         ADDITIONAL_AGENTS+=("$NEW_AGENT_ID")
@@ -357,6 +489,10 @@ if [ "$PROVIDER" = "anthropic" ]; then
     MODELS_SECTION='"models": { "provider": "anthropic", "anthropic": { "model": "'"${MODEL}"'" } }'
 elif [ "$PROVIDER" = "opencode" ]; then
     MODELS_SECTION='"models": { "provider": "opencode", "opencode": { "model": "'"${MODEL}"'" } }'
+elif [ "$PROVIDER" = "kimi" ]; then
+    MODELS_SECTION='"models": { "provider": "kimi", "kimi": { "model": "'"${MODEL}"'", "apiKey": "'"${API_KEY}"'" } }'
+elif [ "$PROVIDER" = "minimax" ]; then
+    MODELS_SECTION='"models": { "provider": "minimax", "minimax": { "model": "'"${MODEL}"'", "apiKey": "'"${API_KEY}"'" } }'
 else
     MODELS_SECTION='"models": { "provider": "openai", "openai": { "model": "'"${MODEL}"'" } }'
 fi
