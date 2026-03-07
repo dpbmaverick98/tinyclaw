@@ -10,7 +10,7 @@ export async function runCommand(
     command: string,
     args: string[],
     cwd?: string,
-    extraEnv?: Record<string, string>
+    extraEnv?: Record<string, string | undefined>
 ): Promise<string> {
     return new Promise((resolve, reject) => {
         const env: Record<string, string | undefined> = { ...process.env, ...extraEnv };
