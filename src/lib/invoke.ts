@@ -2,20 +2,25 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { AgentConfig, TeamConfig } from './types';
-import { SCRIPT_DIR, TINYCLAW_HOME, resolveClaudeModel, resolveCodexModel, resolveOpenCodeModel, resolveApiKey, getProviderBaseUrl, providerRequiresApiKey } from './config';
+import { SCRIPT_DIR, resolveClaudeModel, resolveCodexModel, resolveOpenCodeModel, resolveApiKey, getProviderBaseUrl } from './config';
 import { log } from './logging';
 import { ensureAgentDirectory, updateAgentTeammates } from './agent';
 import { getSettings } from './config';
 
-export async function runCommand(command: string, args: string[], cwd?: string): Promise<string> {
+export async function runCommand(
+    command: string,
+    args: string[],
+    cwd?: string,
+    extraEnv?: Record<string, string>
+): Promise<string> {
     return new Promise((resolve, reject) => {
-        const env = { ...process.env };
+        const env: Record<string, string | undefined> = { ...process.env, ...extraEnv };
         delete env.CLAUDECODE;
 
         const child = spawn(command, args, {
             cwd: cwd || SCRIPT_DIR,
             stdio: ['ignore', 'pipe', 'pipe'],
-            env,
+            env: env as NodeJS.ProcessEnv,
         });
 
         let stdout = '';
@@ -184,14 +189,19 @@ export async function invokeAgent(
         const baseUrl = getProviderBaseUrl(provider);
         const modelId = agent.model;
 
-        const env: Record<string, string> = {
-            ...process.env as Record<string, string>,
-            ANTHROPIC_AUTH_TOKEN: apiKey,
+        // Build extra env vars for runCommand
+        const extraEnv: Record<string, string> = {
+            ANTHROPIC_API_KEY: apiKey,
             ANTHROPIC_BASE_URL: baseUrl,
             ANTHROPIC_MODEL: modelId,
             ANTHROPIC_DEFAULT_SONNET_MODEL: modelId,
+            ANTHROPIC_DEFAULT_OPUS_MODEL: modelId,
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: modelId,
+            ANTHROPIC_SMALL_FAST_MODEL: modelId,
             API_TIMEOUT_MS: '3000000',
             CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+            CLAUDE_CONFIG_DIR: path.join(agentDir, '.claude'),
+            CC_MIRROR_UNSET_AUTH_TOKEN: '1',
         };
 
         const claudeArgs = ['--dangerously-skip-permissions'];
@@ -203,52 +213,20 @@ export async function invokeAgent(
         }
         claudeArgs.push('-p', message);
 
-        // Run claude with custom env
-        return new Promise((resolve, reject) => {
-            delete env.CLAUDECODE;
-
-            const child = spawn('claude', claudeArgs, {
-                cwd: workingDir,
-                stdio: ['ignore', 'pipe', 'pipe'],
-                env,
-            });
-
-            let stdout = '';
-            let stderr = '';
-
-            child.stdout.setEncoding('utf8');
-            child.stderr.setEncoding('utf8');
-
-            child.stdout.on('data', (chunk: string) => {
-                stdout += chunk;
-            });
-
-            child.stderr.on('data', (chunk: string) => {
-                stderr += chunk;
-            });
-
-            child.on('error', (error) => {
-                reject(error);
-            });
-
-            child.on('close', (code) => {
-                if (code === 0) {
-                    resolve(stdout);
-                    return;
-                }
-                // Check for auth errors in stderr
-                const errorMsg = stderr.trim();
-                if (errorMsg.includes('401') || errorMsg.includes('authentication') || errorMsg.includes('Unauthorized')) {
-                    reject(new Error(
-                        `${providerName} API authentication failed.\n` +
-                        `Your API key may be invalid or expired.\n` +
-                        `Run: tinyclaw provider ${provider} --api-key <new-key>`
-                    ));
-                } else {
-                    reject(new Error(errorMsg || `Command exited with code ${code}`));
-                }
-            });
-        });
+        // Run claude with custom env using runCommand
+        try {
+            return await runCommand('claude', claudeArgs, workingDir, extraEnv);
+        } catch (error) {
+            const errorMsg = (error as Error).message;
+            if (errorMsg.includes('401') || errorMsg.includes('authentication') || errorMsg.includes('Unauthorized')) {
+                throw new Error(
+                    `${providerName} API authentication failed.\n` +
+                    `Your API key may be invalid or expired.\n` +
+                    `Run: tinyclaw provider ${provider} --api-key <new-key>`
+                );
+            }
+            throw error;
+        }
     } else {
         // Default to Claude (Anthropic)
         log('INFO', `Using Claude provider (agent: ${agentId})`);
