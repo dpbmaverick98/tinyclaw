@@ -58,23 +58,12 @@ export function getSettings(): Settings {
         }
 
         // Auto-detect provider if not specified
-        if (!settings?.models?.provider) {
-            if (settings?.models?.openai) {
-                if (!settings.models) settings.models = {};
-                settings.models.provider = 'openai';
-            } else if (settings?.models?.opencode) {
-                if (!settings.models) settings.models = {};
-                settings.models.provider = 'opencode';
-            } else if (settings?.models?.kimi) {
-                if (!settings.models) settings.models = {};
-                settings.models.provider = 'kimi';
-            } else if (settings?.models?.minimax) {
-                if (!settings.models) settings.models = {};
-                settings.models.provider = 'minimax';
-            } else if (settings?.models?.anthropic) {
-                if (!settings.models) settings.models = {};
-                settings.models.provider = 'anthropic';
-            }
+        if (!settings?.models?.provider && settings?.models) {
+            if (settings.models.openai)           settings.models.provider = 'openai';
+            else if (settings.models.opencode)    settings.models.provider = 'opencode';
+            else if (settings.models.kimi)        settings.models.provider = 'kimi';
+            else if (settings.models.minimax)     settings.models.provider = 'minimax';
+            else if (settings.models.anthropic)   settings.models.provider = 'anthropic';
         }
 
         return settings;
