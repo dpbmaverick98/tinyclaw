@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Agent, Team, QueueStatus, SSEEvent } from '@/types';
+import { Agent, Team, QueueStatus } from '@/types';
 
 interface ClawState {
   // Data
@@ -21,7 +21,6 @@ interface ClawState {
   setQueueStatus: (status: QueueStatus) => void;
   updateAgentStatus: (agentId: string, status: Agent['status']) => void;
   incrementAgentActivity: (agentId: string) => void;
-  handleSSEEvent: (event: SSEEvent) => void;
   
   // UI Actions
   setSelectedAgentId: (id: string | null) => void;
@@ -30,14 +29,9 @@ interface ClawState {
   setFilterStatus: (status: string | null) => void;
   setFilterTeam: (team: string | null) => void;
   setSearchQuery: (query: string) => void;
-  
-  // Computed
-  getFilteredAgents: () => Agent[];
-  getAgentById: (id: string) => Agent | undefined;
-  getTeamById: (id: string) => Team | undefined;
 }
 
-export const useClawStore = create<ClawState>((set, get) => ({
+export const useClawStore = create<ClawState>((set) => ({
   // Initial state
   agents: [],
   teams: [],
@@ -68,20 +62,6 @@ export const useClawStore = create<ClawState>((set, get) => ({
     ),
   })),
 
-  handleSSEEvent: (event) => {
-    const { type } = event;
-    
-    if (type === 'chain_step_start' && event.agentId) {
-      get().updateAgentStatus(event.agentId as string, 'active');
-    } else if (type === 'chain_step_done' && event.agentId) {
-      get().updateAgentStatus(event.agentId as string, 'idle');
-      get().incrementAgentActivity(event.agentId as string);
-    } else if (type === 'message_enqueued') {
-      // Refresh queue status
-      fetchQueueStatus().then(get().setQueueStatus);
-    }
-  },
-
   // UI actions
   setSelectedAgentId: (id) => set({ selectedAgentId: id }),
   setViewMode: (mode) => set({ viewMode: mode }),
@@ -89,10 +69,12 @@ export const useClawStore = create<ClawState>((set, get) => ({
   setFilterStatus: (status) => set({ filterStatus: status }),
   setFilterTeam: (team) => set({ filterTeam: team }),
   setSearchQuery: (query) => set({ searchQuery: query }),
+}));
 
-  // Computed
-  getFilteredAgents: () => {
-    const { agents, filterProvider, filterStatus, filterTeam, searchQuery } = get();
+// Selector hooks for computed values
+export function useFilteredAgents() {
+  return useClawStore((state) => {
+    const { agents, filterProvider, filterStatus, filterTeam, searchQuery } = state;
     
     return agents.filter((agent) => {
       if (filterProvider && agent.config.provider !== filterProvider) return false;
@@ -107,13 +89,17 @@ export const useClawStore = create<ClawState>((set, get) => ({
       }
       return true;
     });
-  },
+  });
+}
 
-  getAgentById: (id) => get().agents.find((a) => a.id === id),
-  getTeamById: (id) => get().teams.find((t) => t.id === id),
-}));
+export function useAgentById(id: string | null) {
+  return useClawStore((state) => 
+    id ? state.agents.find((a) => a.id === id) : undefined
+  );
+}
 
-async function fetchQueueStatus(): Promise<QueueStatus> {
-  const res = await fetch('http://localhost:3777/api/queue/status');
-  return res.json();
+export function useTeamById(id: string | null) {
+  return useClawStore((state) => 
+    id ? state.teams.find((t) => t.id === id) : undefined
+  );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Header } from '@/components/layout/Header';
 import { CommandPalette } from '@/components/layout/CommandPalette';
 import { AgentGrid } from '@/components/agents/AgentGrid';
@@ -17,39 +17,7 @@ export default function Home() {
   
   const selectedAgentId = useClawStore((state) => state.selectedAgentId);
   const setSelectedAgentId = useClawStore((state) => state.setSelectedAgentId);
-  const filteredAgents = useClawStore((state) => state.getFilteredAgents());
-
-  // Handle view mode changes
-  useEffect(() => {
-    if (selectedAgentId) {
-      setViewMode('agent');
-    } else if (viewMode === 'agent') {
-      setViewMode('grid');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAgentId]);
-
-  // Listen for custom events
-  useEffect(() => {
-    const handleViewTeam = (e: CustomEvent<string>) => {
-      setSelectedTeamId(e.detail);
-      setViewMode('team');
-      setSelectedAgentId(null);
-    };
-
-    const handleOpenBuilder = () => {
-      setViewMode('builder');
-      setSelectedAgentId(null);
-    };
-
-    window.addEventListener('view-team', handleViewTeam as EventListener);
-    window.addEventListener('open-team-builder', handleOpenBuilder);
-
-    return () => {
-      window.removeEventListener('view-team', handleViewTeam as EventListener);
-      window.removeEventListener('open-team-builder', handleOpenBuilder);
-    };
-  }, [setSelectedAgentId]);
+  const agents = useClawStore((state) => state.agents);
 
   const handleCloseDetail = () => {
     setSelectedAgentId(null);
@@ -61,6 +29,20 @@ export default function Home() {
     setViewMode('grid');
   };
 
+  // Show agent detail when agent is selected
+  if (selectedAgentId) {
+    return (
+      <main className="max-w-[1600px] mx-auto px-6 py-4">
+        <Header 
+          onViewModeChange={setViewMode}
+          currentView={viewMode}
+        />
+        <CommandPalette />
+        <AgentDetail onClose={handleCloseDetail} />
+      </main>
+    );
+  }
+
   return (
     <main className="max-w-[1600px] mx-auto px-6 py-4">
       <Header 
@@ -69,9 +51,7 @@ export default function Home() {
       />
       <CommandPalette />
       
-      {viewMode === 'agent' && selectedAgentId ? (
-        <AgentDetail onClose={handleCloseDetail} />
-      ) : viewMode === 'team' && selectedTeamId ? (
+      {viewMode === 'team' && selectedTeamId ? (
         <TeamTopology 
           teamId={selectedTeamId} 
           onClose={handleCloseTeam}
@@ -80,7 +60,7 @@ export default function Home() {
         <TeamBuilder onClose={() => setViewMode('grid')} />
       ) : (
         <>
-          {filteredAgents.length === 0 ? (
+          {agents.length === 0 ? (
             <div className="flex items-center justify-center h-[60vh] text-white/30">
               <div className="text-center">
                 <p className="text-xl mb-2">No agents found</p>
@@ -89,7 +69,7 @@ export default function Home() {
             </div>
           ) : (
             <AgentGrid 
-              agents={filteredAgents} 
+              agents={agents}
               onViewTeam={(teamId) => {
                 setSelectedTeamId(teamId);
                 setViewMode('team');

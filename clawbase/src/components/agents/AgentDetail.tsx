@@ -6,7 +6,7 @@ import { ArrowLeft, MessageSquare, FolderOpen, Settings, Activity, Send, Papercl
 import { GlassCard } from '@/components/shared/GlassCard';
 import { ProviderBadge } from '@/components/shared/ProviderBadge';
 import { StatusIndicator } from '@/components/shared/StatusIndicator';
-import { useClawStore } from '@/stores/useClawStore';
+import { useClawStore, useAgentById, useTeamById } from '@/stores/useClawStore';
 import { sendMessage } from '@/lib/api';
 import { PROVIDER_COLORS } from '@/types';
 
@@ -17,8 +17,8 @@ interface AgentDetailProps {
 export function AgentDetail({ onClose }: AgentDetailProps = {}) {
   const selectedAgentId = useClawStore((state) => state.selectedAgentId);
   const setSelectedAgentId = useClawStore((state) => state.setSelectedAgentId);
-  const agent = useClawStore((state) => state.getAgentById(selectedAgentId || ''));
-  const team = useClawStore((state) => state.getTeamById(agent?.teamId || ''));
+  const agent = useAgentById(selectedAgentId);
+  const team = useTeamById(agent?.teamId || '');
   
   const [activeTab, setActiveTab] = useState<'chat' | 'work' | 'settings'>('chat');
   const [message, setMessage] = useState('');
