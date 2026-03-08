@@ -23,7 +23,7 @@ import fs from 'fs';
 import path from 'path';
 import { MessageData, Conversation, TeamConfig, AgentConfig } from './lib/types';
 import {
-    LOG_FILE, CHATS_DIR, FILES_DIR,
+    LOG_FILE, CHATS_DIR, FILES_DIR, WORKSPACE_DEFAULT_PATH,
     getSettings, getAgents, getTeams
 } from './lib/config';
 import { log, emitEvent } from './lib/logging';
@@ -363,7 +363,7 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
         const teams = getTeams(settings);
 
         // Get workspace path from settings
-        const workspacePath = settings?.workspace?.path || path.join(require('os').homedir(), 'tinyclaw-workspace');
+        const workspacePath = settings?.workspace?.path || WORKSPACE_DEFAULT_PATH;
 
         // Route message to agent (or team)
         let agentId: string;

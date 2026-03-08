@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Hono } from 'hono';
 import { AgentConfig } from '../../lib/types';
-import { SCRIPT_DIR, getSettings, getAgents } from '../../lib/config';
+import { SCRIPT_DIR, WORKSPACE_DEFAULT_PATH, getSettings, getAgents } from '../../lib/config';
 import { log } from '../../lib/logging';
 import { mutateSettings } from './settings';
 
@@ -87,8 +87,7 @@ app.put('/api/agents/:id', async (c) => {
     const currentSettings = getSettings();
     const isNew = !currentSettings.agents?.[agentId];
 
-    const workspacePath = currentSettings.workspace?.path
-        || path.join(require('os').homedir(), 'tinyclaw-workspace');
+    const workspacePath = currentSettings.workspace?.path || WORKSPACE_DEFAULT_PATH;
     const workingDir = body.working_directory || path.join(workspacePath, agentId);
 
     const settings = mutateSettings(s => {

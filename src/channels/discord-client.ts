@@ -11,6 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import https from 'https';
 import http from 'http';
+import { WORKSPACE_DEFAULT_PATH } from '../lib/config';
 import { ensureSenderPaired } from '../lib/pairing';
 import { watchChannel, clearSignal } from '../lib/signals';
 import { isHeartbeatStale } from '../lib/heartbeat';
@@ -303,7 +304,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
                 const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
                 const settings = JSON.parse(settingsData);
                 const agents = settings.agents || {};
-                const workspacePath = settings?.workspace?.path || path.join(require('os').homedir(), 'tinyclaw-workspace');
+                const workspacePath = settings?.workspace?.path || WORKSPACE_DEFAULT_PATH;
                 const resetResults: string[] = [];
                 for (const agentId of agentArgs) {
                     if (!agents[agentId]) {

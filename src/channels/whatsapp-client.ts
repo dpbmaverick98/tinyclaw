@@ -9,6 +9,7 @@ import { Client, LocalAuth, Message, Chat, MessageMedia, MessageTypes } from 'wh
 import qrcode from 'qrcode-terminal';
 import fs from 'fs';
 import path from 'path';
+import { WORKSPACE_DEFAULT_PATH } from '../lib/config';
 import { ensureSenderPaired } from '../lib/pairing';
 import { watchChannel, clearSignal } from '../lib/signals';
 import { isHeartbeatStale } from '../lib/heartbeat';
@@ -303,7 +304,7 @@ client.on('message_create', async (message: Message) => {
                 const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
                 const settings = JSON.parse(settingsData);
                 const agents = settings.agents || {};
-                const workspacePath = settings?.workspace?.path || path.join(require('os').homedir(), 'tinyclaw-workspace');
+                const workspacePath = settings?.workspace?.path || WORKSPACE_DEFAULT_PATH;
                 const resetResults: string[] = [];
                 for (const agentId of agentArgs) {
                     if (!agents[agentId]) {

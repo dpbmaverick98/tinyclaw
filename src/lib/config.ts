@@ -13,6 +13,7 @@ export const LOG_FILE = path.join(TINYCLAW_HOME, 'logs/queue.log');
 export const SETTINGS_FILE = path.join(TINYCLAW_HOME, 'settings.json');
 export const CHATS_DIR = path.join(TINYCLAW_HOME, 'chats');
 export const FILES_DIR = path.join(TINYCLAW_HOME, 'files');
+export const WORKSPACE_DEFAULT_PATH = path.join(require('os').homedir(), 'tinyclaw-workspace');
 
 export function getSettings(): Settings {
     try {
@@ -86,7 +87,7 @@ export function getDefaultAgentFromModels(settings: Settings): AgentConfig {
     }
 
     // Get workspace path from settings or use default
-    const workspacePath = settings?.workspace?.path || path.join(require('os').homedir(), 'tinyclaw-workspace');
+    const workspacePath = settings?.workspace?.path || WORKSPACE_DEFAULT_PATH;
     const defaultAgentDir = path.join(workspacePath, 'default');
 
     return {
