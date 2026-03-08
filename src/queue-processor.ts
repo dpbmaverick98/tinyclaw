@@ -456,18 +456,19 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
         // Run incoming hooks
         ({ text: message } = await runIncomingHooks(message, { channel, sender, messageId, originalMessage: rawMessage }));
 
+        // Validate message size before invoking agent (applies to both team and non-team paths)
+        const validationError = validateMessage(message);
+        if (validationError) {
+            log('ERROR', `Message validation failed: ${validationError}`);
+            failMessage(dbMsg.id, validationError);
+            return;
+        }
+
         // Invoke agent
         await emitEvent('chain_step_start', { agentId, agentName: agent.name, fromAgent: messageData.fromAgent || null });
 
         // --- No team context: simple response to user ---
         if (!teamContext) {
-            // Validate message size before invoking agent
-            const validationError = validateMessage(message);
-            if (validationError) {
-                log('ERROR', `Message validation failed: ${validationError}`);
-                failMessage(dbMsg.id, validationError);
-                return;
-            }
 
             // Fire-and-forget: don't await invokeAgent
             invokeAgent(agent, agentId, message, workspacePath, shouldReset, agents, teams)
@@ -531,14 +532,6 @@ async function processMessage(dbMsg: DbMessage): Promise<void> {
             persistConversation(conv);  // Persist immediately
             log('INFO', `Conversation started: ${conv.id} (team: ${teamContext.team.name})`);
             await emitEvent('team_chain_start', { teamId: teamContext.teamId, teamName: teamContext.team.name, agents: teamContext.team.agents, leader: teamContext.team.leader_agent });
-        }
-
-        // Validate message size before invoking agent
-        const validationError = validateMessage(message);
-        if (validationError) {
-            log('ERROR', `Message validation failed: ${validationError}`);
-            failMessage(dbMsg.id, validationError);
-            return;
         }
 
         // Fire-and-forget: don't await invokeAgent
