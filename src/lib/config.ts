@@ -15,6 +15,10 @@ export const CHATS_DIR = path.join(TINYCLAW_HOME, 'chats');
 export const FILES_DIR = path.join(TINYCLAW_HOME, 'files');
 export const WORKSPACE_DEFAULT_PATH = path.join(require('os').homedir(), 'tinyclaw-workspace');
 
+export function generateId(prefix = ''): string {
+    return `${prefix}${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export function writeJsonFile(filePath: string, data: unknown): void {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
 }

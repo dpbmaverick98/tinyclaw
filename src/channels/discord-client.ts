@@ -11,7 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import https from 'https';
 import http from 'http';
-import { WORKSPACE_DEFAULT_PATH } from '../lib/config';
+import { WORKSPACE_DEFAULT_PATH, generateId } from '../lib/config';
 import { ensureSenderPaired } from '../lib/pairing';
 import { watchChannel, clearSignal } from '../lib/signals';
 import { isHeartbeatStale } from '../lib/heartbeat';
@@ -240,7 +240,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
         const sender = message.author.username;
 
         // Generate unique message ID
-        const messageId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const messageId = generateId();
 
         // Download any attachments
         const downloadedFiles: string[] = [];

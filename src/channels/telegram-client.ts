@@ -13,7 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import https from 'https';
 import http from 'http';
-import { WORKSPACE_DEFAULT_PATH } from '../lib/config';
+import { WORKSPACE_DEFAULT_PATH, generateId } from '../lib/config';
 import { ensureSenderPaired } from '../lib/pairing';
 import { watchChannel, clearSignal } from '../lib/signals';
 import { isHeartbeatStale } from '../lib/heartbeat';
@@ -295,7 +295,7 @@ bot.on('message', async (msg: TelegramBot.Message) => {
         // Determine message text and any media files
         let messageText = msg.text || msg.caption || '';
         const downloadedFiles: string[] = [];
-        const queueMessageId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        const queueMessageId = generateId();
 
         // Handle photo messages
         if (msg.photo && msg.photo.length > 0) {
