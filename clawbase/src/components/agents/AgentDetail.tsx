@@ -10,7 +10,11 @@ import { useClawStore } from '@/stores/useClawStore';
 import { sendMessage } from '@/lib/api';
 import { PROVIDER_COLORS } from '@/types';
 
-export function AgentDetail() {
+interface AgentDetailProps {
+  onClose?: () => void;
+}
+
+export function AgentDetail({ onClose }: AgentDetailProps = {}) {
   const selectedAgentId = useClawStore((state) => state.selectedAgentId);
   const setSelectedAgentId = useClawStore((state) => state.setSelectedAgentId);
   const agent = useClawStore((state) => state.getAgentById(selectedAgentId || ''));
@@ -55,7 +59,10 @@ export function AgentDetail() {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => setSelectedAgentId(null)}
+              onClick={() => {
+                setSelectedAgentId(null);
+                onClose?.();
+              }}
               className="p-2 rounded-lg hover:bg-white/10 transition-colors"
             >
               <ArrowLeft size={20} className="text-white/60" />
