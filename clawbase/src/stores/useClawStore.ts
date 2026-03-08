@@ -41,7 +41,7 @@ export const useClawStore = create<ClawState>((set) => ({
   queueStatus: null,
   selectedAgentId: null,
   viewMode: 'grid',
-  theme: 'dark',
+  theme: 'light',
   filterProvider: null,
   filterStatus: null,
   filterTeam: null,
