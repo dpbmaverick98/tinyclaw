@@ -53,29 +53,29 @@ function SortableAgentItem({ agent, isLeader, onRemove, onSetLeader }: SortableA
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 p-2 rounded-lg bg-white/5 group"
+      className="flex items-center gap-2 p-2 rounded-lg bg-[var(--bg-secondary)] group"
     >
       <button
         {...attributes}
         {...listeners}
-        className="p-1 rounded hover:bg-white/10 cursor-grab active:cursor-grabbing"
+        className="p-1 rounded hover:bg-[var(--bg-tertiary)] cursor-grab active:cursor-grabbing"
       >
-        <GripVertical size={16} className="text-white/30" />
+        <GripVertical size={16} className="text-[var(--text-tertiary)]" />
       </button>
 
-      <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-sm font-medium">
+      <div className="w-8 h-8 rounded-lg bg-[var(--bg-tertiary)] flex items-center justify-center text-sm font-medium text-[var(--text-primary)]">
         {agent.config.name.charAt(0).toUpperCase()}
       </div>
 
       <div className="flex-1">
-        <p className="text-sm text-white">{agent.config.name}</p>
-        <p className="text-xs text-white/40">@{agent.id}</p>
+        <p className="text-sm text-[var(--text-primary)]">{agent.config.name}</p>
+        <p className="text-xs text-[var(--text-tertiary)]">@{agent.id}</p>
       </div>
 
       <button
         onClick={onSetLeader}
         className={`p-1.5 rounded transition-colors ${
-          isLeader ? 'text-yellow-400 bg-yellow-400/20' : 'text-white/30 hover:text-yellow-400'
+          isLeader ? 'text-[var(--accent-secondary)] bg-[var(--accent-secondary)]/20' : 'text-[var(--text-tertiary)] hover:text-[var(--accent-secondary)]'
         }`}
         title={isLeader ? 'Leader' : 'Set as leader'}
       >
@@ -84,7 +84,7 @@ function SortableAgentItem({ agent, isLeader, onRemove, onSetLeader }: SortableA
 
       <button
         onClick={onRemove}
-        className="p-1.5 rounded text-white/30 hover:text-red-400 hover:bg-red-400/20 transition-colors opacity-0 group-hover:opacity-100"
+        className="p-1.5 rounded text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-500/20 transition-colors opacity-0 group-hover:opacity-100"
       >
         <X size={14} />
       </button>
@@ -126,7 +126,6 @@ export function TeamBuilder({ onClose }: TeamBuilderProps) {
 
     if (activeId === overId) return;
 
-    // Check if dragging from available to team
     const isActiveAvailable = availableAgents.some((a) => a.id === activeId);
     const isOverTeam = overId === 'team-drop-zone' || teamAgents.some((a) => a.id === overId);
 
@@ -150,7 +149,6 @@ export function TeamBuilder({ onClose }: TeamBuilderProps) {
 
     if (activeId === overId) return;
 
-    // Reorder within team
     if (teamAgents.some((a) => a.id === activeId) && teamAgents.some((a) => a.id === overId)) {
       const oldIndex = teamAgents.findIndex((a) => a.id === activeId);
       const newIndex = teamAgents.findIndex((a) => a.id === overId);
@@ -159,7 +157,6 @@ export function TeamBuilder({ onClose }: TeamBuilderProps) {
   };
 
   const handleSave = () => {
-    // TODO: API call to save team
     console.log('Saving team:', {
       agents: teamAgents.map((a) => a.id),
       leader: leaderId,
@@ -175,26 +172,26 @@ export function TeamBuilder({ onClose }: TeamBuilderProps) {
     >
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
-            <Users size={20} className="text-purple-400" />
+          <div className="w-10 h-10 rounded-xl bg-[var(--accent-secondary)]/10 flex items-center justify-center">
+            <Users size={20} className="text-[var(--accent-secondary)]" />
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-white">Team Builder</h2>
-            <p className="text-sm text-white/50">Drag agents to create teams</p>
+            <h2 className="text-xl font-semibold text-[var(--text-primary)]">Team Builder</h2>
+            <p className="text-sm text-[var(--text-secondary)]">Drag agents to create teams</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-white/70 hover:bg-white/10 transition-colors"
+            className="px-4 py-2 rounded-xl text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={teamAgents.length < 2}
-            className="px-4 py-2 rounded-xl bg-purple-500 text-white hover:bg-purple-600 transition-colors disabled:opacity-50"
+            className="px-4 py-2 rounded-xl bg-[var(--accent-secondary)] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             Save Team
           </button>
@@ -211,23 +208,23 @@ export function TeamBuilder({ onClose }: TeamBuilderProps) {
         <div className="grid grid-cols-2 gap-6">
           {/* Available Agents */}
           <GlassCard className="p-4" hover={false}>
-            <h3 className="text-sm font-medium text-white/60 mb-4">Available Agents</h3>
+            <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">Available Agents</h3>
             <div className="space-y-2 max-h-[400px] overflow-y-auto">
               {availableAgents.length === 0 ? (
-                <p className="text-center text-white/30 py-8">All agents assigned</p>
+                <p className="text-center text-[var(--text-tertiary)] py-8">All agents assigned</p>
               ) : (
                 availableAgents.map((agent) => (
                   <div
                     key={agent.id}
-                    className="flex items-center gap-3 p-3 rounded-lg bg-white/5 cursor-grab active:cursor-grabbing hover:bg-white/10 transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-secondary)] cursor-grab active:cursor-grabbing hover:bg-[var(--bg-tertiary)] transition-colors"
                   >
-                    <GripVertical size={16} className="text-white/30" />
-                    <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-sm font-medium">
+                    <GripVertical size={16} className="text-[var(--text-tertiary)]" />
+                    <div className="w-8 h-8 rounded-lg bg-[var(--bg-tertiary)] flex items-center justify-center text-sm font-medium text-[var(--text-primary)]">
                       {agent.config.name.charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-sm text-white">{agent.config.name}</p>
-                      <p className="text-xs text-white/40">@{agent.id}</p>
+                      <p className="text-sm text-[var(--text-primary)]">{agent.config.name}</p>
+                      <p className="text-xs text-[var(--text-tertiary)]">@{agent.id}</p>
                     </div>
                   </div>
                 ))
@@ -237,17 +234,17 @@ export function TeamBuilder({ onClose }: TeamBuilderProps) {
 
           {/* Team Drop Zone */}
           <GlassCard
-            className="p-4 border-2 border-dashed border-white/10"
+            className="p-4 border-2 border-dashed border-[var(--border-color)]"
             hover={false}
           >
-            <h3 className="text-sm font-medium text-white/60 mb-4">
+            <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
               Team Members {teamAgents.length > 0 && `(${teamAgents.length})`}
             </h3>
 
             <SortableContext items={teamAgents.map((a) => a.id)}>
               <div className="space-y-2 min-h-[200px]">
                 {teamAgents.length === 0 ? (
-                  <div className="h-[200px] flex items-center justify-center text-white/30 border-2 border-dashed border-white/10 rounded-xl">
+                  <div className="h-[200px] flex items-center justify-center text-[var(--text-tertiary)] border-2 border-dashed border-[var(--border-color)] rounded-xl">
                     <p>Drag agents here</p>
                   </div>
                 ) : (
@@ -271,9 +268,9 @@ export function TeamBuilder({ onClose }: TeamBuilderProps) {
             </SortableContext>
 
             {teamAgents.length >= 2 && (
-              <div className="mt-4 pt-4 border-t border-white/[0.08]">
-                <p className="text-sm text-white/50">
-                  Leader: <span className="text-yellow-400">@{leaderId}</span>
+              <div className="mt-4 pt-4 border-t border-[var(--border-color)]">
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Leader: <span className="text-[var(--accent-secondary)]">@{leaderId}</span>
                 </p>
               </div>
             )}
@@ -282,11 +279,11 @@ export function TeamBuilder({ onClose }: TeamBuilderProps) {
 
         <DragOverlay>
           {activeId ? (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-white/10 shadow-xl">
-              <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-[var(--bg-card)] shadow-xl">
+              <div className="w-8 h-8 rounded-lg bg-[var(--accent-secondary)]/20 flex items-center justify-center text-[var(--text-primary)]">
                 {agents.find((a) => a.id === activeId)?.config.name.charAt(0).toUpperCase()}
               </div>
-              <span className="text-white">@{activeId}</span>
+              <span className="text-[var(--text-primary)]">@{activeId}</span>
             </div>
           ) : null}
         </DragOverlay>
