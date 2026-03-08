@@ -271,9 +271,9 @@ async function handleTeamError(
             removePendingAgent(conv.id, agentId);
             conv.pendingAgents.delete(agentId);
 
-            // Mark outstanding requests as failed
+            // Mark outstanding requests as failed (both acked and pending)
             const pendingRequests = getPendingRequestsForConversation(conv.id);
-            const matchingRequests = pendingRequests.filter(r => r.to_agent === agentId && r.status === 'acked');
+            const matchingRequests = pendingRequests.filter(r => r.to_agent === agentId && (r.status === 'acked' || r.status === 'pending'));
             for (const req of matchingRequests) {
                 failRequest(req.request_id, error.message);
             }
