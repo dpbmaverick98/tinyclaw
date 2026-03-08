@@ -1,49 +1,41 @@
 import { cn } from '@/lib/utils';
-import { Provider, PROVIDER_COLORS, PROVIDER_ICONS } from '@/types';
+import { Provider } from '@/types';
 
 interface ProviderBadgeProps {
   provider: Provider;
-  size?: 'sm' | 'md' | 'lg';
-  showIcon?: boolean;
-  showLabel?: boolean;
+  size?: 'sm' | 'md';
   className?: string;
 }
 
+// Simplified - just text, no icons, minimal colors
+const providerLabels: Record<Provider, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  opencode: 'OpenCode',
+  kimi: 'Kimi',
+  minimax: 'MiniMax',
+};
+
 export function ProviderBadge({
   provider,
-  size = 'md',
-  showIcon = true,
-  showLabel = true,
+  size = 'sm',
   className,
 }: ProviderBadgeProps) {
-  const color = PROVIDER_COLORS[provider];
-  const icon = PROVIDER_ICONS[provider];
-
   const sizeClasses = {
     sm: 'text-xs px-2 py-0.5',
     md: 'text-sm px-2.5 py-1',
-    lg: 'text-base px-3 py-1.5',
   };
 
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full font-medium',
+        'inline-flex rounded font-medium',
+        'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]',
         sizeClasses[size],
         className
       )}
-      style={{
-        backgroundColor: `${color}20`,
-        color: color,
-        border: `1px solid ${color}40`,
-      }}
     >
-      {showIcon && <span>{icon}</span>}
-      {showLabel && (
-        <span className="capitalize">
-          {provider === 'opencode' ? 'OpenCode' : provider}
-        </span>
-      )}
+      {providerLabels[provider]}
     </span>
   );
 }

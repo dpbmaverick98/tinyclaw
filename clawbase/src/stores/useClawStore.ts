@@ -10,6 +10,7 @@ interface ClawState {
   // UI State
   selectedAgentId: string | null;
   viewMode: 'grid' | 'list';
+  theme: 'light' | 'dark';
   filterProvider: string | null;
   filterStatus: string | null;
   filterTeam: string | null;
@@ -25,6 +26,8 @@ interface ClawState {
   // UI Actions
   setSelectedAgentId: (id: string | null) => void;
   setViewMode: (mode: 'grid' | 'list') => void;
+  setTheme: (theme: 'light' | 'dark') => void;
+  toggleTheme: () => void;
   setFilterProvider: (provider: string | null) => void;
   setFilterStatus: (status: string | null) => void;
   setFilterTeam: (team: string | null) => void;
@@ -38,6 +41,7 @@ export const useClawStore = create<ClawState>((set) => ({
   queueStatus: null,
   selectedAgentId: null,
   viewMode: 'grid',
+  theme: 'dark',
   filterProvider: null,
   filterStatus: null,
   filterTeam: null,
@@ -65,6 +69,8 @@ export const useClawStore = create<ClawState>((set) => ({
   // UI actions
   setSelectedAgentId: (id) => set({ selectedAgentId: id }),
   setViewMode: (mode) => set({ viewMode: mode }),
+  setTheme: (theme) => set({ theme }),
+  toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
   setFilterProvider: (provider) => set({ filterProvider: provider }),
   setFilterStatus: (status) => set({ filterStatus: status }),
   setFilterTeam: (team) => set({ filterTeam: team }),
