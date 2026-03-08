@@ -1,6 +1,8 @@
+export type Provider = 'anthropic' | 'openai' | 'opencode' | 'kimi' | 'minimax';
+
 export interface AgentConfig {
     name: string;
-    provider: string;       // 'anthropic', 'openai', 'opencode', 'kimi', or 'minimax'
+    provider: Provider;
     model: string;           // e.g. 'sonnet', 'opus', 'gpt-5.3-codex', 'kimi2.5', 'MiniMax-M2.5'
     working_directory: string;
     system_prompt?: string;
@@ -44,7 +46,7 @@ export interface Settings {
         whatsapp?: {};
     };
     models?: {
-        provider?: string; // 'anthropic', 'openai', 'opencode', 'kimi', or 'minimax'
+        provider?: Provider;
         anthropic?: {
             model?: string;
         };
