@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useClawStore } from '@/stores/useClawStore';
-import { fetchAgents, fetchTeams } from '@/lib/api';
+import { fetchAgents } from '@/lib/api';
 import { Agent, Team, AgentConfig, TeamConfig } from '@/types';
 
 // Demo data for screenshots
@@ -82,26 +82,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     enabled: !USE_DEMO_DATA,
   });
 
-  const teamsQuery = useQuery({
-    queryKey: ['teams'],
-    queryFn: fetchTeams,
-    refetchInterval: 30000,
-    retry: 3,
-    enabled: !USE_DEMO_DATA,
-  });
-
   // Use demo data or real data
   useEffect(() => {
-    let agentData = agentsQuery.data;
-    let teamData = teamsQuery.data;
-
-    // Use demo data if API fails or demo mode is on
-    if (USE_DEMO_DATA || agentsQuery.isError || !agentData) {
-      agentData = DEMO_AGENTS;
-      teamData = DEMO_TEAMS;
-    }
-
-    if (!agentData) return;
+    // Always use demo data for static export
+    const agentData = DEMO_AGENTS;
+    const teamData = DEMO_TEAMS;
     
     // Create agents
     const baseAgents: Agent[] = Object.entries(agentData).map(([id, config]) => ({
@@ -112,34 +97,30 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       fileCount: Math.floor(Math.random() * 10),
     }));
 
-    // If we have teams data, add team info
-    if (teamData) {
-      const teams: Team[] = Object.entries(teamData).map(([id, config]) => ({
-        id,
-        config,
-        agents: config.agents.map((agentId) => ({
-          id: agentId,
-          config: agentData![agentId],
-          status: 'idle' as const,
-          teamId: id,
-          isLeader: agentId === config.leader_agent,
-        })),
-      }));
-      setTeamsRef.current(teams);
+    // Create teams
+    const teams: Team[] = Object.entries(teamData).map(([id, config]) => ({
+      id,
+      config,
+      agents: config.agents.map((agentId) => ({
+        id: agentId,
+        config: agentData[agentId],
+        status: 'idle' as const,
+        teamId: id,
+        isLeader: agentId === config.leader_agent,
+      })),
+    }));
+    setTeamsRef.current(teams);
 
-      // Update agents with team info
-      const agentsWithTeams: Agent[] = baseAgents.map((agent) => {
-        const team = teams.find((t) => t.config.agents.includes(agent.id));
-        return {
-          ...agent,
-          teamId: team?.id,
-          isLeader: team?.config.leader_agent === agent.id,
-        };
-      });
-      setAgentsRef.current(agentsWithTeams);
-    } else {
-      setAgentsRef.current(baseAgents);
-    }
+    // Update agents with team info
+    const agentsWithTeams: Agent[] = baseAgents.map((agent) => {
+      const team = teams.find((t) => t.config.agents.includes(agent.id));
+      return {
+        ...agent,
+        teamId: team?.id,
+        isLeader: team?.config.leader_agent === agent.id,
+      };
+    });
+    setAgentsRef.current(agentsWithTeams);
 
     // Set mock queue status
     setQueueStatusRef.current({
@@ -149,7 +130,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       dead: 0,
       activeConversations: 2,
     });
-  }, [agentsQuery.data, teamsQuery.data, agentsQuery.isError]);
+  }, []); // Run once on mount
 
   // Connect to SSE (disabled for demo)
   // useSSE();

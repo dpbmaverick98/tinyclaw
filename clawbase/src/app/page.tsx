@@ -61,7 +61,7 @@ export default function Home() {
       ) : (
         <>
           {agents.length === 0 ? (
-            <div className="flex items-center justify-center h-[60vh] text-white/30">
+            <div className="flex items-center justify-center h-[60vh] text-[var(--text-tertiary)]">
               <div className="text-center">
                 <p className="text-xl mb-2">No agents found</p>
                 <p className="text-sm">Create your first agent to get started</p>
