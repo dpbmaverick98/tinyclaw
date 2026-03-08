@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Users, Activity } from 'lucide-react';
 import { GlassCard } from '@/components/shared/GlassCard';
-import { useClawStore } from '@/stores/useClawStore';
+import { useClawStore, useTeamById } from '@/stores/useClawStore';
 import { Agent } from '@/types';
 
 interface Node {
@@ -23,7 +23,7 @@ interface Edge {
 }
 
 export function TeamTopology({ teamId, onClose }: { teamId: string; onClose: () => void }) {
-  const team = useClawStore((state) => state.getTeamById(teamId));
+  const team = useTeamById(teamId);
   const agents = useClawStore((state) => state.agents);
   const setSelectedAgentId = useClawStore((state) => state.setSelectedAgentId);
   

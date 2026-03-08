@@ -6,7 +6,7 @@ import { GlassCard } from '@/components/shared/GlassCard';
 import { ProviderBadge } from '@/components/shared/ProviderBadge';
 import { StatusIndicator } from '@/components/shared/StatusIndicator';
 import { Agent, PROVIDER_COLORS } from '@/types';
-import { useClawStore } from '@/stores/useClawStore';
+import { useClawStore, useTeamById } from '@/stores/useClawStore';
 
 interface AgentCardProps {
   agent: Agent;
@@ -15,7 +15,7 @@ interface AgentCardProps {
 
 export function AgentCard({ agent, index }: AgentCardProps) {
   const setSelectedAgentId = useClawStore((state) => state.setSelectedAgentId);
-  const team = useClawStore((state) => state.getTeamById(agent.teamId || ''));
+  const team = useTeamById(agent.teamId || '');
   
   const providerColor = PROVIDER_COLORS[agent.config.provider];
   const isActive = agent.status === 'active';
