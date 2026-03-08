@@ -2,38 +2,38 @@ import { cn } from '@/lib/utils';
 
 interface StatusIndicatorProps {
   status: 'idle' | 'active' | 'error' | 'offline';
-  size?: 'sm' | 'md' | 'lg';
-  pulse?: boolean;
+  size?: 'sm' | 'md';
 }
 
-const statusColors = {
-  idle: '#6B7280',
-  active: '#3B82F6',
-  error: '#EF4444',
-  offline: '#374151',
-};
-
-export function StatusIndicator({ status, size = 'md', pulse = true }: StatusIndicatorProps) {
-  const color = statusColors[status];
+export function StatusIndicator({ status, size = 'md' }: StatusIndicatorProps) {
   const sizeClasses = {
-    sm: 'w-2 h-2',
-    md: 'w-3 h-3',
-    lg: 'w-4 h-4',
+    sm: 'w-1.5 h-1.5',
+    md: 'w-2 h-2',
+  };
+
+  const statusColors = {
+    idle: 'bg-[var(--status-idle)]',
+    active: 'bg-[var(--status-active)]',
+    error: 'bg-[var(--accent-error)]',
+    offline: 'bg-[var(--status-offline)]',
   };
 
   return (
     <span className="relative flex">
       <span
         className={cn(
-          'relative inline-flex rounded-full',
-          sizeClasses[size]
+          'rounded-full',
+          sizeClasses[size],
+          statusColors[status]
         )}
-        style={{ backgroundColor: color }}
       >
-        {pulse && status === 'active' && (
+        {status === 'active' && (
           <span
-            className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
-            style={{ backgroundColor: color }}
+            className={cn(
+              'absolute inline-flex rounded-full opacity-40 animate-ping',
+              sizeClasses[size],
+              statusColors[status]
+            )}
           />
         )}
       </span>
