@@ -1,24 +1,14 @@
-import fs from 'fs';
 import path from 'path';
 import { Hono } from 'hono';
 import { Task, TaskStatus } from '../../lib/types';
-import { TINYCLAW_HOME } from '../../lib/config';
+import { TINYCLAW_HOME, readJsonFile, writeJsonFile } from '../../lib/config';
 import { log } from '../../lib/logging';
 
 const TASKS_FILE = path.join(TINYCLAW_HOME, 'tasks.json');
 
-function readTasks(): Task[] {
-    try {
-        if (!fs.existsSync(TASKS_FILE)) return [];
-        return JSON.parse(fs.readFileSync(TASKS_FILE, 'utf8'));
-    } catch {
-        return [];
-    }
-}
+const readTasks = (): Task[] => readJsonFile<Task[]>(TASKS_FILE, []);
 
-function writeTasks(tasks: Task[]): void {
-    fs.writeFileSync(TASKS_FILE, JSON.stringify(tasks, null, 2) + '\n');
-}
+const writeTasks = (tasks: Task[]): void => writeJsonFile(TASKS_FILE, tasks);
 
 const app = new Hono();
 

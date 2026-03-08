@@ -15,6 +15,18 @@ export const CHATS_DIR = path.join(TINYCLAW_HOME, 'chats');
 export const FILES_DIR = path.join(TINYCLAW_HOME, 'files');
 export const WORKSPACE_DEFAULT_PATH = path.join(require('os').homedir(), 'tinyclaw-workspace');
 
+export function writeJsonFile(filePath: string, data: unknown): void {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
+}
+
+export function readJsonFile<T>(filePath: string, defaultValue: T): T {
+    try {
+        return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T;
+    } catch {
+        return defaultValue;
+    }
+}
+
 export function getSettings(): Settings {
     try {
         const settingsData = fs.readFileSync(SETTINGS_FILE, 'utf8');
@@ -33,7 +45,7 @@ export function getSettings(): Settings {
                 // Write the fixed JSON back and create a backup
                 const backupPath = SETTINGS_FILE + '.bak';
                 fs.copyFileSync(SETTINGS_FILE, backupPath);
-                fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2) + '\n');
+                writeJsonFile(SETTINGS_FILE, settings);
                 console.error(`[WARN] Auto-fixed settings.json (backup: ${backupPath})`);
             } catch {
                 console.error(`[ERROR] Could not auto-fix settings.json — returning empty config`);
