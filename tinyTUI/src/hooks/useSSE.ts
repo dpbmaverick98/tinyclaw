@@ -225,10 +225,11 @@ export function useSSE() {
           break;
 
         case 'agent_typing':
-          setAgentTyping(String(event.agentId), true);
+          console.log('[SSE] Agent typing:', event.agentId || event.agent);
+          setAgentTyping(String(event.agentId || event.agent), true);
           // Auto-clear typing after 5 seconds if no response
           setTimeout(() => {
-            setAgentTyping(String(event.agentId), false);
+            setAgentTyping(String(event.agentId || event.agent), false);
           }, 5000);
           break;
 

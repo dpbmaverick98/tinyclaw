@@ -2,168 +2,27 @@
 
 import { useClawStore } from '@/stores/useClawStore';
 import { ChatPane } from '@/components/panes/ChatPane';
-import { useState, useCallback, useRef } from 'react';
-
-interface PaneLayout {
-  id: string;
-  agentId: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-const GRID_SIZE = 10; // Snap to 10% grid
-
-function snapToGrid(value: number): number {
-  return Math.round(value / GRID_SIZE) * GRID_SIZE;
-}
+import GridLayout from 'react-grid-layout';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 
 export function PaneContainer() {
-  const { panes, activePaneId, setActivePane, closePane, agents } = useClawStore();
-  const [layouts, setLayouts] = useState<PaneLayout[]>([]);
-  const [dragging, setDragging] = useState<string | null>(null);
-  const [resizing, setResizing] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const { panes, activePaneId, setActivePane, closePane, agents, reorderPanes } = useClawStore();
 
-  // Initialize layouts for new panes
-  const getLayout = useCallback((paneId: string, agentId: string, index: number): PaneLayout => {
-    const existing = layouts.find(l => l.id === paneId);
-    if (existing) return existing;
-    
-    // Default grid: 2 columns, auto rows
+  // Convert panes to grid layout items
+  const layout = panes.map((pane, index) => {
     const col = index % 2;
     const row = Math.floor(index / 2);
-    
     return {
-      id: paneId,
-      agentId,
-      x: col * 50, // percentage
-      y: row * 50,
-      w: 50,
-      h: 50,
+      i: pane.id,
+      x: col * 6,
+      y: row * 8,
+      w: 6,
+      h: 8,
+      minW: 3,
+      minH: 4,
     };
-  }, [layouts]);
-
-  // Update layout when panes change
-  const currentLayouts = panes.map((pane, index) => 
-    getLayout(pane.id, pane.agentId, index)
-  );
-
-  // Sync layouts state
-  if (currentLayouts.length !== layouts.length) {
-    setLayouts(currentLayouts);
-  }
-
-  const handleDragStart = (paneId: string) => {
-    setDragging(paneId);
-  };
-
-  const handleDragMove = useCallback((e: React.MouseEvent, paneId: string) => {
-    if (dragging !== paneId) return;
-    
-    const container = containerRef.current;
-    if (!container) return;
-    
-    const rect = container.getBoundingClientRect();
-    
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    
-    setLayouts(prev => prev.map(l => 
-      l.id === paneId 
-        ? { ...l, x: Math.max(0, Math.min(90, x - l.w / 2)), y: Math.max(0, y) }
-        : l
-    ));
-  }, [dragging]);
-
-  const handleDragEnd = () => {
-    // Snap to grid on release
-    if (dragging) {
-      setLayouts(prev => prev.map(l => 
-        l.id === dragging 
-          ? { ...l, x: snapToGrid(l.x), y: snapToGrid(l.y) }
-          : l
-      ));
-    }
-    setDragging(null);
-  };
-
-  const handleResizeStart = (paneId: string) => {
-    setResizing(paneId);
-  };
-
-  const handleResizeMove = useCallback((e: React.MouseEvent, paneId: string) => {
-    if (resizing !== paneId) return;
-    
-    const container = containerRef.current;
-    if (!container) return;
-    
-    const rect = container.getBoundingClientRect();
-    
-    const layout = layouts.find(l => l.id === paneId);
-    if (!layout) return;
-    
-    const w = ((e.clientX - rect.left) / rect.width) * 100 - layout.x;
-    const h = ((e.clientY - rect.top) / rect.height) * 100 - layout.y;
-    
-    setLayouts(prev => prev.map(l => 
-      l.id === paneId 
-        ? { ...l, w: Math.max(20, Math.min(80, w)), h: Math.max(20, Math.min(80, h)) }
-        : l
-    ));
-  }, [resizing, layouts]);
-
-  const handleResizeEnd = () => {
-    // Snap to grid on release
-    if (resizing) {
-      setLayouts(prev => prev.map(l => 
-        l.id === resizing 
-          ? { ...l, w: snapToGrid(l.w), h: snapToGrid(l.h) }
-          : l
-      ));
-    }
-    setResizing(null);
-  };
-
-  const movePaneUp = (paneId: string) => {
-    setLayouts(prev => {
-      const index = prev.findIndex(l => l.id === paneId);
-      if (index <= 0) return prev;
-      
-      const newLayouts = [...prev];
-      const current = newLayouts[index];
-      const above = newLayouts[index - 1];
-      
-      // Swap y positions
-      const tempY = current.y;
-      current.y = above.y;
-      above.y = tempY;
-      
-      return newLayouts;
-    });
-  };
-
-  const movePaneDown = (paneId: string) => {
-    setLayouts(prev => {
-      const index = prev.findIndex(l => l.id === paneId);
-      if (index >= prev.length - 1) return prev;
-      
-      const newLayouts = [...prev];
-      const current = newLayouts[index];
-      const below = newLayouts[index + 1];
-      
-      // Swap y positions
-      const tempY = current.y;
-      current.y = below.y;
-      below.y = tempY;
-      
-      return newLayouts;
-    });
-  };
-
-  // Calculate container height based on panes
-  const maxY = Math.max(...layouts.map(l => l.y + l.h), 100);
+  });
 
   if (panes.length === 0) {
     return (
@@ -177,53 +36,40 @@ export function PaneContainer() {
   }
 
   return (
-    <div 
-      ref={containerRef}
-      className="flex-1 relative overflow-auto bg-[var(--bg-secondary)]"
-      style={{ minHeight: '100%' }}
-      onMouseMove={(e) => {
-        if (dragging) handleDragMove(e, dragging);
-        if (resizing) handleResizeMove(e, resizing);
-      }}
-      onMouseUp={() => {
-        handleDragEnd();
-        handleResizeEnd();
-      }}
-      onMouseLeave={() => {
-        handleDragEnd();
-        handleResizeEnd();
-      }}
-    >
-      <div style={{ height: `${maxY}%`, minHeight: '100%', position: 'relative' }}>
+    <div className="flex-1 overflow-auto bg-[var(--bg-secondary)] p-2">
+      <GridLayout
+        className="layout"
+        layout={layout}
+        cols={12}
+        rowHeight={30}
+        width={1200}
+        draggableHandle=".drag-handle"
+        verticalCompact={true}
+        onLayoutChange={(newLayout) => {
+          const sorted = [...newLayout].sort((a: { y: number; x: number }, b: { y: number; x: number }) => (a.y !== b.y ? a.y - b.y : a.x - b.x));
+          reorderPanes(sorted.map((l: { i: string }) => l.i));
+        }}
+      >
         {panes.map((pane, index) => {
-          const layout = layouts.find(l => l.id === pane.id) || { x: 0, y: 0, w: 50, h: 50 };
           const agent = agents.find(a => a.id === pane.agentId);
+          const isActive = pane.id === activePaneId;
           
           return (
             <div
               key={pane.id}
               className={`
-                absolute bg-[var(--bg-primary)] border border-[var(--border-color)]
-                flex flex-col
-                ${pane.id === activePaneId ? 'ring-1 ring-[var(--text-secondary)] z-10' : 'z-0'}
-                ${pane.hasNewMessage ? 'pane-new-message ring-1 ring-[var(--accent)]' : ''}
+                bg-[var(--bg-primary)] border border-[var(--border-color)]
+                flex flex-col overflow-hidden
+                ${isActive ? 'ring-1 ring-[var(--text-secondary)]' : ''}
+                ${pane.hasNewMessage ? 'ring-2 ring-[var(--accent)] !z-50' : 'z-0'}
               `}
-              style={{
-                left: `${layout.x}%`,
-                top: `${layout.y}%`,
-                width: `${layout.w}%`,
-                height: `${layout.h}%`,
-              }}
               onClick={() => setActivePane(pane.id)}
+              style={{
+                boxShadow: pane.hasNewMessage ? '0 0 10px var(--accent)' : undefined,
+              }}
             >
               {/* Drag Handle with Agent ID */}
-              <div
-                className="h-6 bg-[var(--bg-tertiary)] cursor-move flex items-center justify-between px-2 select-none"
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  handleDragStart(pane.id);
-                }}
-              >
+              <div className="drag-handle h-6 bg-[var(--bg-tertiary)] cursor-move flex items-center justify-between px-2 select-none">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-[var(--text-muted)]">:::</span>
                   {agent && (
@@ -237,24 +83,30 @@ export function PaneContainer() {
                 </div>
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      movePaneUp(pane.id);
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      const newOrder = [...panes.map(p => p.id)];
+                      if (index > 0) {
+                        [newOrder[index], newOrder[index - 1]] = [newOrder[index - 1], newOrder[index]];
+                        reorderPanes(newOrder);
+                      }
                     }}
                     disabled={index === 0}
                     className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xs disabled:opacity-30"
-                    title="Move up"
                   >
                     ↑
                   </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      movePaneDown(pane.id);
+                      const newOrder = [...panes.map(p => p.id)];
+                      if (index < panes.length - 1) {
+                        [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+                        reorderPanes(newOrder);
+                      }
                     }}
                     disabled={index === panes.length - 1}
                     className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xs disabled:opacity-30"
-                    title="Move down"
                   >
                     ↓
                   </button>
@@ -271,34 +123,17 @@ export function PaneContainer() {
               </div>
               
               {/* Chat Content */}
-              <div className="flex-1 min-h-0">
+              <div className="flex-1 min-h-0 overflow-hidden">
                 <ChatPane
                   pane={pane}
-                  isActive={pane.id === activePaneId}
+                  isActive={isActive}
                   onActivate={() => setActivePane(pane.id)}
                 />
-              </div>
-              
-              {/* Resize Handle */}
-              <div
-                className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  handleResizeStart(pane.id);
-                }}
-              >
-                <svg 
-                  viewBox="0 0 10 10" 
-                  className="w-full h-full text-[var(--text-muted)]"
-                  fill="currentColor"
-                >
-                  <path d="M0 10 L10 10 L10 0 Z" opacity="0.3" />
-                </svg>
               </div>
             </div>
           );
         })}
-      </div>
+      </GridLayout>
     </div>
   );
 }
