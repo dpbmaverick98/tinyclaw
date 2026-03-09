@@ -10,7 +10,7 @@ export function TopBar() {
   return (
     <header className="h-10 flex items-center justify-between px-4 border-b border-[var(--border-color)] bg-[var(--bg-primary)]">
       <div className="text-[var(--text-primary)] font-medium">
-        clawbase
+        tinyTUI
       </div>
       
       <div className="flex items-center gap-4">
