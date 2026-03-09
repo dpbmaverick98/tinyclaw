@@ -22,10 +22,10 @@ function recordToArray<T>(record: Record<string, T>): Array<T & { id: string }> 
   return Object.entries(record).map(([id, data]) => ({ id, ...data }));
 }
 
-// Generate fingerprint for deduplication
+// Generate fingerprint for deduplication (NO timestamp - just messageId + agentId + type)
 function getEventFingerprint(event: { type: string; [key: string]: unknown }): string {
   const e = event as Record<string, unknown>;
-  return `${event.type}:${e.timestamp ?? ''}:${e.messageId ?? e.message_id ?? ''}:${e.agentId ?? e.agent ?? ''}`;
+  return `${event.type}:${e.messageId ?? e.message_id ?? ''}:${e.agentId ?? e.agent ?? ''}`;
 }
 
 export function useSSE() {
@@ -128,8 +128,8 @@ export function useSSE() {
       const responses = await getResponses(50);
       
       for (const response of responses) {
-        // Generate fingerprint for deduplication
-        const fingerprint = `poll:${response.timestamp}:${response.messageId}:${response.agentId}`;
+        // Generate fingerprint for deduplication (no timestamp)
+        const fingerprint = `poll:${response.messageId}:${response.agentId}`;
         if (isProcessed(fingerprint)) continue;
         
         // Find pane for this agent using ref to avoid stale closure
@@ -190,8 +190,7 @@ export function useSSE() {
 
       switch (event.type) {
         case 'message_received':
-        case 'response_ready':
-        case 'chain_step_done': {
+        case 'response_ready': {
           // Get agent ID from event
           const agentId = String(event.agentId || event.agent || '');
           if (!agentId) return;
@@ -243,7 +242,7 @@ export function useSSE() {
         }
 
         case 'chain_step_start': {
-          // Use chain_step_start as typing indicator
+          // Use chain_step_start as typing indicator ONLY (no message adding)
           const agentId = String(event.agentId || event.agent || '');
           if (agentId) {
             console.log('[SSE] Agent started typing:', agentId);
@@ -251,6 +250,9 @@ export function useSSE() {
           }
           break;
         }
+
+        // chain_step_done is NOT handled for messages - it has no responseText
+        // Messages come from response_ready only
 
         case 'agent_created':
           addAgent({
@@ -284,7 +286,7 @@ export function useSSE() {
           break;
 
         default:
-          // Other events: agent_routed, chain_handoff, etc.
+          // Other events: agent_routed, chain_handoff, chain_step_done, etc.
           console.log('[SSE] Event:', event.type, event);
       }
     };
