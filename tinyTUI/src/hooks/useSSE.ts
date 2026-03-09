@@ -22,6 +22,12 @@ function recordToArray<T>(record: Record<string, T>): Array<T & { id: string }> 
   return Object.entries(record).map(([id, data]) => ({ id, ...data }));
 }
 
+// Generate fingerprint for deduplication
+function getEventFingerprint(event: { type: string; [key: string]: unknown }): string {
+  const e = event as Record<string, unknown>;
+  return `${event.type}:${e.timestamp ?? ''}:${e.messageId ?? e.message_id ?? ''}:${e.agentId ?? e.agent ?? ''}`;
+}
+
 export function useSSE() {
   const { 
     setAgents, 
@@ -40,13 +46,28 @@ export function useSSE() {
   const [useDemo, setUseDemo] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
   const unsubscribeRef = useRef<(() => void) | null>(null);
-  const processedResponsesRef = useRef<Set<string>>(new Set());
+  
+  // Shared deduplication set for BOTH polling and SSE
+  const processedEventsRef = useRef<Set<string>>(new Set());
   
   // Use ref to avoid stale closure issues with panes
   const panesRef = useRef(panes);
   panesRef.current = panes;
   const teamsRef = useRef(teams);
   teamsRef.current = teams;
+  
+  // Helper to check and mark event as processed
+  const isProcessed = useCallback((fingerprint: string): boolean => {
+    if (processedEventsRef.current.has(fingerprint)) return true;
+    processedEventsRef.current.add(fingerprint);
+    
+    // Keep set size manageable
+    if (processedEventsRef.current.size > 500) {
+      const entries = Array.from(processedEventsRef.current);
+      processedEventsRef.current = new Set(entries.slice(-300));
+    }
+    return false;
+  }, []);
   
   // Polling function for agents/teams
   const pollData = useCallback(async () => {
@@ -98,17 +119,18 @@ export function useSSE() {
     }
   }, [setAgents, setTeams, setConnected, errorCount, useDemo]);
   
-  // Polling function for responses
+  // Polling function for responses - only used when SSE is not connected
   const pollResponses = useCallback(async () => {
-    if (useDemo || panesRef.current.length === 0) return;
+    // Skip polling if SSE is connected (useDemo is false and we have a subscription)
+    if (useDemo || panesRef.current.length === 0 || unsubscribeRef.current) return;
     
     try {
       const responses = await getResponses(50);
       
       for (const response of responses) {
-        // Skip if already processed
-        if (processedResponsesRef.current.has(response.messageId)) continue;
-        processedResponsesRef.current.add(response.messageId);
+        // Generate fingerprint for deduplication
+        const fingerprint = `poll:${response.timestamp}:${response.messageId}:${response.agentId}`;
+        if (isProcessed(fingerprint)) continue;
         
         // Find pane for this agent using ref to avoid stale closure
         const pane = panesRef.current.find(p => p.agentId === response.agentId);
@@ -132,16 +154,10 @@ export function useSSE() {
           read: false,
         });
       }
-      
-      // Keep set size manageable
-      if (processedResponsesRef.current.size > 200) {
-        const entries = Array.from(processedResponsesRef.current);
-        processedResponsesRef.current = new Set(entries.slice(-100));
-      }
     } catch {
       // Silently fail - responses will come via SSE if available
     }
-  }, [useDemo, addMessage, addNotification]);
+  }, [useDemo, addMessage, addNotification, isProcessed]);
   
   // Initial load + polling
   useEffect(() => {
@@ -151,7 +167,7 @@ export function useSSE() {
     // Poll every 5 seconds for agents/teams
     const dataInterval = setInterval(pollData, 5000);
     
-    // Poll every 2 seconds for responses
+    // Poll every 2 seconds for responses (only when SSE not connected)
     const responseInterval = setInterval(pollResponses, 2000);
     
     return () => {
@@ -165,6 +181,13 @@ export function useSSE() {
     if (useDemo) return;
 
     const handleEvent = (event: { type: string; [key: string]: unknown }) => {
+      // Deduplicate events
+      const fingerprint = getEventFingerprint(event);
+      if (isProcessed(fingerprint)) {
+        console.log('[SSE] Duplicate event skipped:', event.type, fingerprint);
+        return;
+      }
+
       switch (event.type) {
         case 'message_received':
         case 'response_ready':
@@ -281,7 +304,7 @@ export function useSSE() {
       unsubscribe();
       unsubscribeRef.current = null;
     };
-  }, [useDemo, addMessage, addNotification, addAgent, addTeam, updateAgentTask, setAgentTyping, setConnected]);
+  }, [useDemo, addMessage, addNotification, addAgent, addTeam, updateAgentTask, setAgentTyping, setConnected, isProcessed]);
   
   return { connected: !useDemo, useDemo };
 }
