@@ -189,57 +189,12 @@ export function useSSE() {
       }
 
       switch (event.type) {
-        case 'message_received':
-        case 'response_ready': {
-          // Get agent ID from event
-          const agentId = String(event.agentId || event.agent || '');
-          if (!agentId) return;
-          
-          // Clear typing indicator for this agent
-          setAgentTyping(agentId, false);
-          
-          // Find pane for this agent using ref to avoid stale closure
-          const pane = panesRef.current.find(p => p.agentId === agentId);
-          if (!pane) {
-            console.log('[SSE] No pane found for agent:', agentId, 'Available panes:', panesRef.current.map(p => p.agentId));
-            return;
-          }
-          
-          // Get response text - check multiple possible field names
-          const content = String(
-            event.responseText || 
-            event.content || 
-            event.message || 
-            event.text || 
-            ''
-          );
-          
-          if (!content) {
-            console.log('[SSE] No content in event:', event);
-            return;
-          }
-          
-          console.log('[SSE] Adding message to pane:', pane.id, 'content:', content.slice(0, 50));
-          
-          // Add message to pane
-          addMessage(pane.id, {
-            id: String(event.messageId || `sse-${Date.now()}`),
-            role: 'agent',
-            content: content,
-            timestamp: Number(event.timestamp) || Date.now(),
-          });
-          
-          // Add notification
-          addNotification({
-            id: `notif-${event.messageId || Date.now()}`,
-            agentId: agentId,
-            agentName: String(event.agentName || event.agent || ''),
-            preview: content.slice(0, 100),
-            timestamp: Date.now(),
-            read: false,
-          });
+        case 'message_received': {
+          // Handle user messages - no response text here
           break;
         }
+
+        // response_ready removed - chain_step_done handles all agent responses
 
         case 'chain_step_start': {
           // Use chain_step_start as typing indicator ONLY (no message adding)
