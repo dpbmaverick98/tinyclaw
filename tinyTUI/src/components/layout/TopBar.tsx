@@ -4,7 +4,7 @@ import { useClawStore } from '@/stores/useClawStore';
 import { ThemeToggle } from './ThemeToggle';
 
 export function TopBar() {
-  const { notifications, showNotifications, setShowNotifications, connected } = useClawStore();
+  const { notifications, showNotifications, setShowNotifications, connected, agents } = useClawStore();
   const unreadCount = notifications.filter(n => !n.read).length;
   
   return (
@@ -13,6 +13,9 @@ export function TopBar() {
         <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
         <span className="text-[var(--text-primary)] font-medium">
           tinyTUI
+        </span>
+        <span className="text-xs text-[var(--text-muted)] ml-2">
+          {connected ? `connected (${agents.length} agents)` : 'disconnected'}
         </span>
       </div>
       

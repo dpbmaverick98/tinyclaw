@@ -25,12 +25,15 @@ export function useSSE() {
     const connect = async () => {
       try {
         // Load initial data
+        console.log('Connecting to TinyClaw server...');
         const [agents, teams] = await Promise.all([
           getAgents(),
           getTeams(),
         ]);
         
         if (!isActive) return;
+        
+        console.log('Loaded agents:', agents.length, 'teams:', teams.length);
         
         // Transform API data to store format
         setAgents(agents.map(a => ({
@@ -49,37 +52,50 @@ export function useSSE() {
         
       } catch (error) {
         console.error('Failed to load initial data:', error);
-        // Will retry via SSE reconnection
-      }
-      
-      // Connect to SSE
-      const es = createEventSource();
-      esRef.current = es;
-      
-      es.onopen = () => {
-        console.log('SSE connected');
-        setConnected(true);
-      };
-      
-      es.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          handleEvent(data);
-        } catch (error) {
-          console.error('Failed to parse SSE event:', error);
-        }
-      };
-      
-      es.onerror = () => {
-        console.log('SSE error, will reconnect...');
         setConnected(false);
-        es.close();
-        
-        // Reconnect after 3 seconds
+        // Retry after 3 seconds
         reconnectTimeoutRef.current = setTimeout(() => {
           if (isActive) connect();
         }, 3000);
-      };
+        return;
+      }
+      
+      // Connect to SSE
+      try {
+        const es = createEventSource();
+        esRef.current = es;
+        
+        es.onopen = () => {
+          console.log('SSE connected');
+          setConnected(true);
+        };
+        
+        es.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            handleEvent(data);
+          } catch (error) {
+            console.error('Failed to parse SSE event:', error);
+          }
+        };
+        
+        es.onerror = (err) => {
+          console.log('SSE error:', err);
+          setConnected(false);
+          es.close();
+          
+          // Reconnect after 3 seconds
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (isActive) connect();
+          }, 3000);
+        };
+      } catch (sseError) {
+        console.error('Failed to create SSE connection:', sseError);
+        setConnected(false);
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (isActive) connect();
+        }, 3000);
+      }
     };
     
     const handleEvent = (data: { type: string; [key: string]: unknown }) => {
