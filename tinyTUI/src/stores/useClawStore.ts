@@ -49,8 +49,17 @@ interface ClawState {
   updateAgentTask: (agentId: string, task: string | undefined) => void;
 }
 
-const DEMO_AGENTS: Agent[] = [];
-const DEMO_TEAMS: Team[] = [];
+const DEMO_AGENTS: Agent[] = [
+  { id: 'claude', name: 'claude', provider: 'anthropic', model: 'claude-sonnet-4-5', status: 'idle' },
+  { id: 'kimi', name: 'kimi', provider: 'kimi', model: 'kimi-k2.5', status: 'idle' },
+  { id: 'writer', name: 'writer', provider: 'openai', model: 'gpt-4o', status: 'idle' },
+  { id: 'guru', name: 'guru', provider: 'opencode', model: 'opencode-1.5', status: 'idle' },
+];
+
+const DEMO_TEAMS: Team[] = [
+  { id: 'backend', name: 'backend', agentIds: ['claude', 'kimi'] },
+  { id: 'security', name: 'security', agentIds: ['guru'] },
+];
 
 export const useClawStore = create<ClawState>((set, get) => ({
   agents: DEMO_AGENTS,
