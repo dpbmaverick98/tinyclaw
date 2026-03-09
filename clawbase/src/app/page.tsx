@@ -29,12 +29,20 @@ export default function Home() {
     setViewMode('grid');
   };
 
-  // Show agent detail when agent is selected
-  if (selectedAgentId) {
+  // Handle view mode changes - clear agent selection when going to builder
+  const handleViewModeChange = (mode: ViewMode) => {
+    if (mode === 'builder' && selectedAgentId) {
+      setSelectedAgentId(null);
+    }
+    setViewMode(mode);
+  };
+
+  // Show agent detail when agent is selected (but not in builder mode)
+  if (selectedAgentId && viewMode !== 'builder') {
     return (
       <main className="max-w-[1600px] mx-auto px-6 py-4">
         <Header 
-          onViewModeChange={setViewMode}
+          onViewModeChange={handleViewModeChange}
           currentView={viewMode}
         />
         <CommandPalette />
@@ -46,7 +54,7 @@ export default function Home() {
   return (
     <main className="max-w-[1600px] mx-auto px-6 py-4">
       <Header 
-        onViewModeChange={setViewMode}
+        onViewModeChange={handleViewModeChange}
         currentView={viewMode}
       />
       <CommandPalette />
