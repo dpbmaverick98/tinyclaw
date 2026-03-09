@@ -6,26 +6,26 @@ interface ClawState {
   agents: Agent[];
   teams: Team[];
   connected: boolean;
-  
+
   // Panes
   panes: ChatPane[];
   activePaneId: string | null;
-  
+
   // UI
   sidebarExpanded: {
     agents: boolean;
     teams: boolean;
     active: boolean;
   };
-  
+
   // Notifications
   notifications: Notification[];
   showNotifications: boolean;
-  
+
   // Modal
   modalOpen: boolean;
   modalTab: 'agent' | 'team';
-  
+
   // Actions
   setAgents: (agents: Agent[]) => void;
   setTeams: (teams: Team[]) => void;
@@ -49,21 +49,9 @@ interface ClawState {
   updateAgentTask: (agentId: string, task: string | undefined) => void;
 }
 
-const DEMO_AGENTS: Agent[] = [
-  { id: 'claude', name: 'claude', provider: 'anthropic', model: 'claude-sonnet-4-5', status: 'idle' },
-  { id: 'kimi', name: 'kimi', provider: 'kimi', model: 'kimi-k2.5', status: 'idle' },
-  { id: 'writer', name: 'writer', provider: 'openai', model: 'gpt-4o', status: 'idle' },
-  { id: 'guru', name: 'guru', provider: 'opencode', model: 'opencode-1.5', status: 'idle' },
-];
-
-const DEMO_TEAMS: Team[] = [
-  { id: 'backend', name: 'backend', agentIds: ['claude', 'kimi'] },
-  { id: 'security', name: 'security', agentIds: ['guru'] },
-];
-
 export const useClawStore = create<ClawState>((set, get) => ({
-  agents: DEMO_AGENTS,
-  teams: DEMO_TEAMS,
+  agents: [],
+  teams: [],
   connected: false,
   panes: [],
   activePaneId: null,
@@ -76,11 +64,11 @@ export const useClawStore = create<ClawState>((set, get) => ({
   setAgents: (agents) => set({ agents }),
   setTeams: (teams) => set({ teams }),
   setConnected: (connected) => set({ connected }),
-  
+
   addAgent: (agent) => set((state) => ({ agents: [...state.agents, agent] })),
-  
+
   addTeam: (team) => set((state) => ({ teams: [...state.teams, team] })),
-  
+
   openPane: (agentId) => {
     const existing = get().panes.find(p => p.agentId === agentId);
     if (existing) {
@@ -99,62 +87,62 @@ export const useClawStore = create<ClawState>((set, get) => ({
       activePaneId: newPane.id,
     }));
   },
-  
+
   closePane: (paneId) => set((state) => {
     const newPanes = state.panes.filter(p => p.id !== paneId);
     return {
       panes: newPanes,
-      activePaneId: state.activePaneId === paneId 
+      activePaneId: state.activePaneId === paneId
         ? (newPanes.length > 0 ? newPanes[newPanes.length - 1].id : null)
         : state.activePaneId,
     };
   }),
-  
+
   setActivePane: (paneId) => set({ activePaneId: paneId }),
-  
+
   updatePaneInput: (paneId, input) => set((state) => ({
     panes: state.panes.map(p => p.id === paneId ? { ...p, input } : p),
   })),
-  
+
   addMessage: (paneId, message) => set((state) => ({
-    panes: state.panes.map(p => 
-      p.id === paneId 
+    panes: state.panes.map(p =>
+      p.id === paneId
         ? { ...p, messages: [...p.messages, message], hasNewMessage: message.role === 'agent' }
         : p
     ),
   })),
-  
+
   markPaneRead: (paneId) => set((state) => ({
     panes: state.panes.map(p => p.id === paneId ? { ...p, hasNewMessage: false } : p),
   })),
-  
+
   toggleSidebar: (section) => set((state) => ({
     sidebarExpanded: { ...state.sidebarExpanded, [section]: !state.sidebarExpanded[section] },
   })),
-  
+
   addNotification: (notification) => set((state) => ({
     notifications: [notification, ...state.notifications],
   })),
-  
+
   markNotificationRead: (id) => set((state) => ({
     notifications: state.notifications.map(n => n.id === id ? { ...n, read: true } : n),
   })),
-  
+
   markAllNotificationsRead: () => set((state) => ({
     notifications: state.notifications.map(n => ({ ...n, read: true })),
   })),
-  
+
   setShowNotifications: (show) => set({ showNotifications: show }),
-  
+
   openModal: (tab = 'agent') => set({ modalOpen: true, modalTab: tab }),
-  
+
   closeModal: () => set({ modalOpen: false }),
-  
+
   setModalTab: (tab) => set({ modalTab: tab }),
-  
+
   updateAgentTask: (agentId, task) => set((state) => ({
-    agents: state.agents.map(a => 
-      a.id === agentId 
+    agents: state.agents.map(a =>
+      a.id === agentId
         ? { ...a, currentTask: task, status: task ? 'working' : 'idle' }
         : a
     ),
