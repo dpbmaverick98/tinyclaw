@@ -34,12 +34,19 @@ export function useSSE() {
     addAgent,
     addTeam,
     panes,
+    teams,
   } = useClawStore();
   
   const [useDemo, setUseDemo] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const processedResponsesRef = useRef<Set<string>>(new Set());
+  
+  // Use ref to avoid stale closure issues with panes
+  const panesRef = useRef(panes);
+  panesRef.current = panes;
+  const teamsRef = useRef(teams);
+  teamsRef.current = teams;
   
   // Polling function for agents/teams
   const pollData = useCallback(async () => {
@@ -93,7 +100,7 @@ export function useSSE() {
   
   // Polling function for responses
   const pollResponses = useCallback(async () => {
-    if (useDemo || panes.length === 0) return;
+    if (useDemo || panesRef.current.length === 0) return;
     
     try {
       const responses = await getResponses(50);
@@ -103,8 +110,8 @@ export function useSSE() {
         if (processedResponsesRef.current.has(response.messageId)) continue;
         processedResponsesRef.current.add(response.messageId);
         
-        // Find pane for this agent
-        const pane = panes.find(p => p.agentId === response.agentId);
+        // Find pane for this agent using ref to avoid stale closure
+        const pane = panesRef.current.find(p => p.agentId === response.agentId);
         if (!pane) continue;
         
         // Add message to pane
@@ -134,7 +141,7 @@ export function useSSE() {
     } catch {
       // Silently fail - responses will come via SSE if available
     }
-  }, [useDemo, panes, addMessage, addNotification, processedResponsesRef]);
+  }, [useDemo, addMessage, addNotification]);
   
   // Initial load + polling
   useEffect(() => {
@@ -161,6 +168,7 @@ export function useSSE() {
       switch (event.type) {
         case 'message_received':
         case 'response_ready':
+        case 'chain_step_done': {
           // Get agent ID from event
           const agentId = String(event.agentId || event.agent || '');
           if (!agentId) return;
@@ -168,9 +176,12 @@ export function useSSE() {
           // Clear typing indicator for this agent
           setAgentTyping(agentId, false);
           
-          // Find pane for this agent
-          const pane = panes.find(p => p.agentId === agentId);
-          if (!pane) return;
+          // Find pane for this agent using ref to avoid stale closure
+          const pane = panesRef.current.find(p => p.agentId === agentId);
+          if (!pane) {
+            console.log('[SSE] No pane found for agent:', agentId, 'Available panes:', panesRef.current.map(p => p.agentId));
+            return;
+          }
           
           // Get response text - check multiple possible field names
           const content = String(
@@ -181,7 +192,12 @@ export function useSSE() {
             ''
           );
           
-          if (!content) return;
+          if (!content) {
+            console.log('[SSE] No content in event:', event);
+            return;
+          }
+          
+          console.log('[SSE] Adding message to pane:', pane.id, 'content:', content.slice(0, 50));
           
           // Add message to pane
           addMessage(pane.id, {
@@ -201,6 +217,17 @@ export function useSSE() {
             read: false,
           });
           break;
+        }
+
+        case 'chain_step_start': {
+          // Use chain_step_start as typing indicator
+          const agentId = String(event.agentId || event.agent || '');
+          if (agentId) {
+            console.log('[SSE] Agent started typing:', agentId);
+            setAgentTyping(agentId, true);
+          }
+          break;
+        }
 
         case 'agent_created':
           addAgent({
@@ -234,7 +261,7 @@ export function useSSE() {
           break;
 
         default:
-          // Other events: agent_routed, chain_step_start, etc.
+          // Other events: agent_routed, chain_handoff, etc.
           console.log('[SSE] Event:', event.type, event);
       }
     };
@@ -254,7 +281,7 @@ export function useSSE() {
       unsubscribe();
       unsubscribeRef.current = null;
     };
-  }, [useDemo, panes, addMessage, addNotification, addAgent, addTeam, updateAgentTask, setAgentTyping, setConnected]);
+  }, [useDemo, addMessage, addNotification, addAgent, addTeam, updateAgentTask, setAgentTyping, setConnected]);
   
   return { connected: !useDemo, useDemo };
 }
