@@ -1,21 +1,26 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useClawStore } from '@/stores/useClawStore';
-import { getAgents, getTeams, createEventSource } from '@/lib/api';
+import { getAgents, getTeams, subscribeToEvents, type AgentConfig } from '@/lib/api';
 
 // Demo data for when server is not available
-const DEMO_AGENTS = [
-  { id: 'claude', name: 'claude', provider: 'anthropic' as const, model: 'claude-sonnet-4-5', status: 'idle' as const },
-  { id: 'kimi', name: 'kimi', provider: 'kimi' as const, model: 'kimi-k2.5', status: 'idle' as const },
-  { id: 'writer', name: 'writer', provider: 'openai' as const, model: 'gpt-4o', status: 'idle' as const },
-  { id: 'guru', name: 'guru', provider: 'opencode' as const, model: 'opencode-1.5', status: 'idle' as const },
-];
+const DEMO_AGENTS: Record<string, AgentConfig> = {
+  claude: { name: 'claude', provider: 'anthropic', model: 'claude-sonnet-4-5', working_directory: '~/.claw/agents/claude' },
+  kimi: { name: 'kimi', provider: 'kimi', model: 'kimi-k2.5', working_directory: '~/.claw/agents/kimi' },
+  writer: { name: 'writer', provider: 'openai', model: 'gpt-4o', working_directory: '~/.claw/agents/writer' },
+  guru: { name: 'guru', provider: 'opencode', model: 'opencode-1.5', working_directory: '~/.claw/agents/guru' },
+};
 
-const DEMO_TEAMS = [
-  { id: 'backend', name: 'backend', agentIds: ['claude', 'kimi'] },
-  { id: 'security', name: 'security', agentIds: ['guru'] },
-];
+const DEMO_TEAMS: Record<string, { name: string; agents: string[] }> = {
+  backend: { name: 'backend', agents: ['claude', 'kimi'] },
+  security: { name: 'security', agents: ['guru'] },
+};
+
+// Convert Record to array with IDs
+function recordToArray<T>(record: Record<string, T>): Array<T & { id: string }> {
+  return Object.entries(record).map(([id, data]) => ({ id, ...data }));
+}
 
 export function useSSE() {
   const { 
@@ -29,169 +34,142 @@ export function useSSE() {
     addTeam,
   } = useClawStore();
   
-  const esRef = useRef<EventSource | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [useDemo, setUseDemo] = useState(false);
+  const [errorCount, setErrorCount] = useState(0);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
   
-  useEffect(() => {
-    // If we've tried 3 times and failed, use demo data
-    if (reconnectAttempts >= 3 && !useDemo) {
-      console.log('Server not available, using demo data');
-      setUseDemo(true);
-      setAgents(DEMO_AGENTS);
-      setTeams(DEMO_TEAMS);
-      return;
-    }
-
+  // Polling function
+  const pollData = useCallback(async () => {
     if (useDemo) return;
-
-    let isActive = true;
     
-    const connect = async () => {
-      try {
-        // Load initial data
-        console.log('[SSE] Loading agents and teams from server...');
-        const agentsData = await getAgents();
-        const teamsData = await getTeams();
-        
-        console.log('[SSE] Agents response:', agentsData);
-        console.log('[SSE] Teams response:', teamsData);
-        
-        if (!isActive) return;
-        
-        // Handle different response formats
-        const agents = Array.isArray(agentsData) ? agentsData : (agentsData as { agents?: unknown[] }).agents || [];
-        const teams = Array.isArray(teamsData) ? teamsData : (teamsData as { teams?: unknown[] }).teams || [];
-        
-        console.log('[SSE] Parsed agents:', agents);
-        console.log('[SSE] Parsed teams:', teams);
-        
-        // Transform API data to store format
-        setAgents((agents as { id: string; name: string; provider: string; model: string }[]).map((a) => ({
+    try {
+      const [agentsRecord, teamsRecord] = await Promise.all([
+        getAgents(),
+        getTeams(),
+      ]);
+      
+      // Convert Record to array with IDs
+      const agents = recordToArray(agentsRecord).map(a => ({
+        id: a.id,
+        name: a.name,
+        provider: a.provider as 'anthropic' | 'openai' | 'opencode' | 'kimi' | 'minimax',
+        model: a.model,
+        status: 'idle' as const,
+      }));
+      
+      const teams = recordToArray(teamsRecord).map(t => ({
+        id: t.id,
+        name: t.name,
+        agentIds: (t as { agents?: string[] }).agents || [],
+      }));
+      
+      setAgents(agents);
+      setTeams(teams);
+      setConnected(true);
+      setErrorCount(0);
+    } catch (error) {
+      console.error('Poll error:', error);
+      setErrorCount(c => c + 1);
+      setConnected(false);
+      
+      // After 3 errors, use demo data
+      if (errorCount >= 2) {
+        console.log('Server not available, using demo data');
+        setUseDemo(true);
+        setAgents(recordToArray(DEMO_AGENTS).map(a => ({ 
           id: a.id,
           name: a.name,
           provider: a.provider as 'anthropic' | 'openai' | 'opencode' | 'kimi' | 'minimax',
           model: a.model,
-          status: 'idle',
+          status: 'idle' as const 
         })));
-        
-        setTeams((teams as { id: string; name: string; agents?: string[]; agentIds?: string[] }[]).map((t) => ({
-          id: t.id,
-          name: t.name,
-          agentIds: t.agents || t.agentIds || [],
-        })));
-        
-        setReconnectAttempts(0);
-        
-      } catch (error) {
-        console.error('Failed to load initial data:', error);
-        setReconnectAttempts(prev => prev + 1);
-        // Will retry via SSE reconnection
+        setTeams(recordToArray(DEMO_TEAMS).map(t => ({ id: t.id, name: t.name, agentIds: (t as { agents: string[] }).agents })));
       }
-      
-      // Connect to SSE
-      try {
-        const es = createEventSource();
-        esRef.current = es;
-        
-        es.onopen = () => {
-          console.log('SSE connected');
-          setConnected(true);
-          setReconnectAttempts(0);
-        };
-        
-        es.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            handleEvent(data);
-          } catch (error) {
-            console.error('Failed to parse SSE event:', error);
-          }
-        };
-        
-        es.onerror = () => {
-          console.log('SSE error, will reconnect...');
-          setConnected(false);
-          es.close();
-          setReconnectAttempts(prev => prev + 1);
-          
-          // Reconnect after 3 seconds
-          reconnectTimeoutRef.current = setTimeout(() => {
-            if (isActive) connect();
-          }, 3000);
-        };
-      } catch (error) {
-        console.error('Failed to create SSE connection:', error);
-        setReconnectAttempts(prev => prev + 1);
-      }
-    };
+    }
+  }, [setAgents, setTeams, setConnected, errorCount, useDemo]);
+  
+  // Initial load + polling
+  useEffect(() => {
+    // Initial load
+    pollData();
     
-    const handleEvent = (data: { type: string; [key: string]: unknown }) => {
-      switch (data.type) {
+    // Poll every 5 seconds
+    const interval = setInterval(pollData, 5000);
+    
+    return () => clearInterval(interval);
+  }, [pollData]);
+  
+  // SSE subscription
+  useEffect(() => {
+    if (useDemo) return;
+
+    const handleEvent = (event: { type: string; [key: string]: unknown }) => {
+      switch (event.type) {
         case 'message_received':
+        case 'response_ready':
           // Add message to appropriate pane
-          addMessage(String(data.paneId || `pane-${data.agentId}`), {
-            id: String(data.messageId),
+          addMessage(String(event.paneId || `pane-${event.agentId}`), {
+            id: String(event.messageId || Date.now()),
             role: 'agent',
-            content: String(data.content),
-            timestamp: Number(data.timestamp) || Date.now(),
+            content: String(event.content || event.message || ''),
+            timestamp: Number(event.timestamp) || Date.now(),
           });
-          
-          // Add notification if pane not active
+
+          // Add notification
           addNotification({
-            id: `notif-${data.messageId}`,
-            agentId: String(data.agentId),
-            agentName: String(data.agentName),
-            preview: String(data.content).slice(0, 100),
+            id: `notif-${event.messageId || Date.now()}`,
+            agentId: String(event.agentId || ''),
+            agentName: String(event.agentName || event.agent || ''),
+            preview: String(event.content || event.message || '').slice(0, 100),
             timestamp: Date.now(),
             read: false,
           });
           break;
-          
+
         case 'agent_created':
           addAgent({
-            id: String(data.id),
-            name: String(data.name),
-            provider: data.provider as 'anthropic' | 'openai' | 'opencode' | 'kimi' | 'minimax',
-            model: String(data.model),
+            id: String(event.id),
+            name: String(event.name),
+            provider: (event.provider as 'anthropic' | 'openai' | 'opencode' | 'kimi' | 'minimax') || 'anthropic',
+            model: String(event.model || ''),
             status: 'idle',
           });
           break;
-          
+
         case 'team_created':
           addTeam({
-            id: String(data.id),
-            name: String(data.name),
-            agentIds: data.agents as string[],
+            id: String(event.id),
+            name: String(event.name),
+            agentIds: (event.agents as string[]) || [],
           });
           break;
-          
+
         case 'agent_status_changed':
-          updateAgentTask(String(data.agentId), data.task as string | undefined);
+          updateAgentTask(String(event.agentId), event.task as string | undefined);
           break;
-          
-        case 'agent_typing':
-          // Could show typing indicator
-          break;
-          
+
         default:
-          console.log('Unknown event type:', data.type);
+          // Other events: agent_routed, chain_step_start, etc.
+          console.log('[SSE] Event:', event.type, event);
       }
     };
-    
-    connect();
-    
+
+    const unsubscribe = subscribeToEvents(
+      (event) => {
+        handleEvent(event);
+      },
+      () => {
+        setConnected(false);
+      }
+    );
+
+    unsubscribeRef.current = unsubscribe;
+
     return () => {
-      isActive = false;
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (esRef.current) {
-        esRef.current.close();
-      }
+      unsubscribe();
+      unsubscribeRef.current = null;
     };
-  }, [setAgents, setTeams, setConnected, addMessage, addNotification, updateAgentTask, addAgent, addTeam, reconnectAttempts, useDemo]);
+  }, [useDemo, addMessage, addNotification, addAgent, addTeam, updateAgentTask, setConnected]);
   
-  return { connected: !!esRef.current && !useDemo, useDemo };
+  return { connected: !useDemo, useDemo };
 }

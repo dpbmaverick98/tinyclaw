@@ -44,9 +44,12 @@ export function ChatPane({ pane, isActive, onActivate }: ChatPaneProps) {
 
     updatePaneInput(pane.id, '');
 
-    // Send to server
+    // Send to server - use correct payload format
     try {
-      await sendMessage(agent.id, content);
+      await sendMessage({
+        message: content,
+        agent: agent.id,
+      });
       // Response will come via SSE
     } catch (error) {
       console.error('Failed to send message:', error);
