@@ -23,6 +23,15 @@ export interface ChatMessage {
   agentId?: string;
 }
 
+export interface ResponseData {
+  messageId: string;
+  agentId: string;
+  agentName: string;
+  responseText: string;
+  timestamp: number;
+  channel: string;
+}
+
 export interface EventData {
   type: string;
   timestamp: number;
@@ -104,6 +113,11 @@ export async function sendMessage(payload: {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+// Responses - for polling recent responses
+export async function getResponses(limit = 20): Promise<ResponseData[]> {
+  return fetchAPI(`/api/responses?limit=${limit}`);
 }
 
 // SSE - correct endpoint with event types

@@ -31,7 +31,9 @@ interface ClawState {
   setTeams: (teams: Team[]) => void;
   setConnected: (connected: boolean) => void;
   addAgent: (agent: Agent) => void;
+  removeAgent: (agentId: string) => void;
   addTeam: (team: Team) => void;
+  removeTeam: (teamId: string) => void;
   openPane: (agentId: string) => void;
   closePane: (paneId: string) => void;
   setActivePane: (paneId: string) => void;
@@ -67,7 +69,16 @@ export const useClawStore = create<ClawState>((set, get) => ({
 
   addAgent: (agent) => set((state) => ({ agents: [...state.agents, agent] })),
 
+  removeAgent: (agentId) => set((state) => ({
+    agents: state.agents.filter(a => a.id !== agentId),
+    panes: state.panes.filter(p => p.agentId !== agentId),
+  })),
+
   addTeam: (team) => set((state) => ({ teams: [...state.teams, team] })),
+
+  removeTeam: (teamId) => set((state) => ({
+    teams: state.teams.filter(t => t.id !== teamId),
+  })),
 
   openPane: (agentId) => {
     const existing = get().panes.find(p => p.agentId === agentId);
