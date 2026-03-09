@@ -14,7 +14,7 @@ interface PaneLayout {
 }
 
 export function PaneContainer() {
-  const { panes, activePaneId, setActivePane, closePane } = useClawStore();
+  const { panes, activePaneId, setActivePane, closePane, agents } = useClawStore();
   const [layouts, setLayouts] = useState<PaneLayout[]>([]);
   const [dragging, setDragging] = useState<string | null>(null);
   const [resizing, setResizing] = useState<string | null>(null);
@@ -128,6 +128,7 @@ export function PaneContainer() {
     >
       {panes.map((pane) => {
         const layout = layouts.find(l => l.id === pane.id) || { x: 0, y: 0, w: 50, h: 50 };
+        const agent = agents.find(a => a.id === pane.agentId);
         
         return (
           <div
@@ -146,7 +147,7 @@ export function PaneContainer() {
             }}
             onClick={() => setActivePane(pane.id)}
           >
-            {/* Drag Handle */}
+            {/* Drag Handle with Agent ID */}
             <div
               className="h-6 bg-[var(--bg-tertiary)] cursor-move flex items-center justify-between px-2 select-none"
               onMouseDown={(e) => {
@@ -154,7 +155,14 @@ export function PaneContainer() {
                 handleDragStart(pane.id);
               }}
             >
-              <span className="text-xs text-[var(--text-muted)]">:::</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[var(--text-muted)]">:::</span>
+                {agent && (
+                  <span className="text-xs text-[var(--text-secondary)]">
+                    {agent.id}: {agent.name}
+                  </span>
+                )}
+              </div>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
