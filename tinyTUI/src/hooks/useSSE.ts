@@ -30,6 +30,7 @@ export function useSSE() {
     addMessage, 
     addNotification,
     updateAgentTask,
+    setAgentTyping,
     addAgent,
     addTeam,
     panes,
@@ -164,6 +165,9 @@ export function useSSE() {
           const agentId = String(event.agentId || event.agent || '');
           if (!agentId) return;
           
+          // Clear typing indicator for this agent
+          setAgentTyping(agentId, false);
+          
           // Find pane for this agent
           const pane = panes.find(p => p.agentId === agentId);
           if (!pane) return;
@@ -220,6 +224,14 @@ export function useSSE() {
           updateAgentTask(String(event.agentId), event.task as string | undefined);
           break;
 
+        case 'agent_typing':
+          setAgentTyping(String(event.agentId), true);
+          // Auto-clear typing after 5 seconds if no response
+          setTimeout(() => {
+            setAgentTyping(String(event.agentId), false);
+          }, 5000);
+          break;
+
         default:
           // Other events: agent_routed, chain_step_start, etc.
           console.log('[SSE] Event:', event.type, event);
@@ -241,7 +253,7 @@ export function useSSE() {
       unsubscribe();
       unsubscribeRef.current = null;
     };
-  }, [useDemo, panes, addMessage, addNotification, addAgent, addTeam, updateAgentTask, setConnected]);
+  }, [useDemo, panes, addMessage, addNotification, addAgent, addTeam, updateAgentTask, setAgentTyping, setConnected]);
   
   return { connected: !useDemo, useDemo };
 }

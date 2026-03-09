@@ -160,6 +160,9 @@ export function PaneContainer() {
                 {agent && (
                   <span className="text-xs text-[var(--text-secondary)]">
                     {agent.id}: {agent.name}
+                    {agent.typing && (
+                      <span className="ml-2 text-[var(--accent)] animate-pulse">...</span>
+                    )}
                   </span>
                 )}
               </div>
