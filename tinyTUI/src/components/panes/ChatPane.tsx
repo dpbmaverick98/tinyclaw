@@ -12,7 +12,7 @@ interface ChatPaneProps {
 }
 
 export function ChatPane({ pane, isActive, onActivate }: ChatPaneProps) {
-  const { agents, closePane, updatePaneInput, addMessage, markPaneRead } = useClawStore();
+  const { agents, updatePaneInput, addMessage, markPaneRead } = useClawStore();
   const agent = agents.find(a => a.id === pane.agentId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -64,27 +64,11 @@ export function ChatPane({ pane, isActive, onActivate }: ChatPaneProps) {
     <div
       onClick={onActivate}
       className={`
-        bg-[var(--bg-primary)] flex flex-col min-h-0
+        bg-[var(--bg-primary)] flex flex-col min-h-0 h-full
         ${isActive ? 'ring-1 ring-[var(--text-secondary)]' : ''}
         ${pane.hasNewMessage ? 'pane-new-message ring-1 ring-[var(--accent)]' : ''}
       `}
     >
-      {/* Header */}
-      <div className="h-8 flex items-center justify-between px-3 border-b border-[var(--border-color)] bg-[var(--bg-secondary)]">
-        <div className="flex items-center gap-2">
-          <span className="text-[var(--text-primary)] text-sm">{agent.name}</span>
-          {agent.status === 'working' && (
-            <span className="text-[var(--text-muted)] text-xs">...</span>
-          )}
-        </div>
-        <button
-          onClick={(e) => { e.stopPropagation(); closePane(pane.id); }}
-          className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors text-xs"
-        >
-          x
-        </button>
-      </div>
-
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
         {pane.messages.length === 0 && (
