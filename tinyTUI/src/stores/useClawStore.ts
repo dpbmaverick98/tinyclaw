@@ -5,6 +5,7 @@ interface ClawState {
   // Data
   agents: Agent[];
   teams: Team[];
+  connected: boolean;
   
   // Panes
   panes: ChatPane[];
@@ -26,6 +27,9 @@ interface ClawState {
   modalTab: 'agent' | 'team';
   
   // Actions
+  setAgents: (agents: Agent[]) => void;
+  setTeams: (teams: Team[]) => void;
+  setConnected: (connected: boolean) => void;
   addAgent: (agent: Agent) => void;
   addTeam: (team: Team) => void;
   openPane: (agentId: string) => void;
@@ -45,21 +49,13 @@ interface ClawState {
   updateAgentTask: (agentId: string, task: string | undefined) => void;
 }
 
-const DEMO_AGENTS: Agent[] = [
-  { id: 'claude', name: 'claude', provider: 'anthropic', model: 'claude-sonnet-4-5', status: 'idle' },
-  { id: 'kimi', name: 'kimi', provider: 'kimi', model: 'kimi-k2.5', status: 'idle' },
-  { id: 'writer', name: 'writer', provider: 'openai', model: 'gpt-4o', status: 'idle' },
-  { id: 'guru', name: 'guru', provider: 'opencode', model: 'opencode-1.5', status: 'idle' },
-];
-
-const DEMO_TEAMS: Team[] = [
-  { id: 'backend', name: 'backend', agentIds: ['claude', 'kimi'] },
-  { id: 'security', name: 'security', agentIds: ['guru'] },
-];
+const DEMO_AGENTS: Agent[] = [];
+const DEMO_TEAMS: Team[] = [];
 
 export const useClawStore = create<ClawState>((set, get) => ({
   agents: DEMO_AGENTS,
   teams: DEMO_TEAMS,
+  connected: false,
   panes: [],
   activePaneId: null,
   sidebarExpanded: { agents: true, teams: true, active: true },
@@ -67,6 +63,10 @@ export const useClawStore = create<ClawState>((set, get) => ({
   showNotifications: false,
   modalOpen: false,
   modalTab: 'agent',
+
+  setAgents: (agents) => set({ agents }),
+  setTeams: (teams) => set({ teams }),
+  setConnected: (connected) => set({ connected }),
   
   addAgent: (agent) => set((state) => ({ agents: [...state.agents, agent] })),
   

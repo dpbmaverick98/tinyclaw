@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useClawStore } from '@/stores/useClawStore';
-import { Agent, Team, Provider } from '@/types';
+import { Provider } from '@/types';
+import { createAgent, createTeam } from '@/lib/api';
 
 const PROVIDERS: Provider[] = ['anthropic', 'openai', 'opencode', 'kimi', 'minimax'];
 
@@ -16,7 +17,10 @@ const DEFAULT_MODELS: Record<Provider, string> = {
 
 export function AddModal() {
   const { modalOpen, modalTab, setModalTab, closeModal, addAgent, addTeam, agents } = useClawStore();
-  
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   // Agent form state
   const [agentForm, setAgentForm] = useState({
     id: '',
@@ -24,14 +28,14 @@ export function AddModal() {
     provider: 'anthropic' as Provider,
     model: '',
   });
-  
+
   // Team form state
   const [teamForm, setTeamForm] = useState({
     id: '',
     name: '',
     agentIds: [] as string[],
   });
-  
+
   // Inline agent creation in team flow
   const [showInlineAgent, setShowInlineAgent] = useState(false);
   const [inlineAgent, setInlineAgent] = useState({
@@ -39,56 +43,97 @@ export function AddModal() {
     name: '',
     provider: 'anthropic' as Provider,
   });
-  
+
   if (!modalOpen) return null;
-  
-  const handleCreateAgent = () => {
+
+  const handleCreateAgent = async () => {
     if (!agentForm.id || !agentForm.name) return;
-    
-    const newAgent: Agent = {
-      id: agentForm.id,
-      name: agentForm.name,
-      provider: agentForm.provider,
-      model: agentForm.model || DEFAULT_MODELS[agentForm.provider],
-      status: 'idle',
-    };
-    
-    addAgent(newAgent);
-    setAgentForm({ id: '', name: '', provider: 'anthropic', model: '' });
-    closeModal();
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const newAgent = await createAgent({
+        id: agentForm.id,
+        name: agentForm.name,
+        provider: agentForm.provider,
+        model: agentForm.model || DEFAULT_MODELS[agentForm.provider],
+      });
+
+      addAgent({
+        id: newAgent.id,
+        name: newAgent.name,
+        provider: newAgent.provider as Provider,
+        model: newAgent.model,
+        status: 'idle',
+      });
+
+      setAgentForm({ id: '', name: '', provider: 'anthropic', model: '' });
+      closeModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create agent');
+    } finally {
+      setIsLoading(false);
+    }
   };
-  
-  const handleCreateTeam = () => {
+
+  const handleCreateTeam = async () => {
     if (!teamForm.id || !teamForm.name) return;
-    
-    const newTeam: Team = {
-      id: teamForm.id,
-      name: teamForm.name,
-      agentIds: teamForm.agentIds,
-    };
-    
-    addTeam(newTeam);
-    setTeamForm({ id: '', name: '', agentIds: [] });
-    closeModal();
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const newTeam = await createTeam({
+        id: teamForm.id,
+        name: teamForm.name,
+        agents: teamForm.agentIds,
+      });
+
+      addTeam({
+        id: newTeam.id,
+        name: newTeam.name,
+        agentIds: newTeam.agents,
+      });
+
+      setTeamForm({ id: '', name: '', agentIds: [] });
+      closeModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create team');
+    } finally {
+      setIsLoading(false);
+    }
   };
-  
-  const handleCreateInlineAgent = () => {
+
+  const handleCreateInlineAgent = async () => {
     if (!inlineAgent.id || !inlineAgent.name) return;
-    
-    const newAgent: Agent = {
-      id: inlineAgent.id,
-      name: inlineAgent.name,
-      provider: inlineAgent.provider,
-      model: DEFAULT_MODELS[inlineAgent.provider],
-      status: 'idle',
-    };
-    
-    addAgent(newAgent);
-    setTeamForm(prev => ({ ...prev, agentIds: [...prev.agentIds, inlineAgent.id] }));
-    setInlineAgent({ id: '', name: '', provider: 'anthropic' });
-    setShowInlineAgent(false);
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const newAgent = await createAgent({
+        id: inlineAgent.id,
+        name: inlineAgent.name,
+        provider: inlineAgent.provider,
+        model: DEFAULT_MODELS[inlineAgent.provider],
+      });
+
+      addAgent({
+        id: newAgent.id,
+        name: newAgent.name,
+        provider: newAgent.provider as Provider,
+        model: newAgent.model,
+        status: 'idle',
+      });
+
+      setTeamForm(prev => ({ ...prev, agentIds: [...prev.agentIds, newAgent.id] }));
+      setInlineAgent({ id: '', name: '', provider: 'anthropic' });
+      setShowInlineAgent(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create agent');
+    } finally {
+      setIsLoading(false);
+    }
   };
-  
+
   const toggleAgentInTeam = (agentId: string) => {
     setTeamForm(prev => ({
       ...prev,
@@ -97,7 +142,7 @@ export function AddModal() {
         : [...prev.agentIds, agentId],
     }));
   };
-  
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-[480px] bg-[var(--bg-primary)] border border-[var(--border-color)]">
@@ -124,9 +169,15 @@ export function AddModal() {
             x
           </button>
         </div>
-        
+
         {/* Content */}
         <div className="p-4">
+          {error && (
+            <div className="mb-4 p-2 bg-red-500/20 border border-red-500/50 text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+
           {modalTab === 'agent' ? (
             <div className="space-y-4">
               <div>
@@ -139,7 +190,7 @@ export function AddModal() {
                   placeholder="e.g., code-reviewer"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-xs text-[var(--text-muted)] mb-1">name</label>
                 <input
@@ -150,7 +201,7 @@ export function AddModal() {
                   placeholder="e.g., Code Reviewer"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-xs text-[var(--text-muted)] mb-1">provider</label>
                 <div className="flex flex-wrap gap-2">
@@ -160,8 +211,8 @@ export function AddModal() {
                       onClick={() => setAgentForm(prev => ({ ...prev, provider: p }))}
                       className={`
                         px-3 py-1 text-xs border
-                        ${agentForm.provider === p 
-                          ? 'border-[var(--text-primary)] text-[var(--text-primary)]' 
+                        ${agentForm.provider === p
+                          ? 'border-[var(--text-primary)] text-[var(--text-primary)]'
                           : 'border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}
                       `}
                     >
@@ -170,7 +221,7 @@ export function AddModal() {
                   ))}
                 </div>
               </div>
-              
+
               <div>
                 <label className="block text-xs text-[var(--text-muted)] mb-1">model (optional)</label>
                 <input
@@ -181,7 +232,7 @@ export function AddModal() {
                   placeholder={DEFAULT_MODELS[agentForm.provider]}
                 />
               </div>
-              
+
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   onClick={closeModal}
@@ -191,10 +242,10 @@ export function AddModal() {
                 </button>
                 <button
                   onClick={handleCreateAgent}
-                  disabled={!agentForm.id || !agentForm.name}
+                  disabled={!agentForm.id || !agentForm.name || isLoading}
                   className="px-4 py-2 text-sm bg-[var(--accent)] text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  create
+                  {isLoading ? 'creating...' : 'create'}
                 </button>
               </div>
             </div>
@@ -210,7 +261,7 @@ export function AddModal() {
                   placeholder="e.g., backend-squad"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-xs text-[var(--text-muted)] mb-1">name</label>
                 <input
@@ -221,10 +272,10 @@ export function AddModal() {
                   placeholder="e.g., Backend Squad"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-xs text-[var(--text-muted)] mb-2">members</label>
-                
+
                 <div className="border border-[var(--border-color)] bg-[var(--bg-secondary)] p-2 space-y-1 max-h-32 overflow-y-auto">
                   {agents.length === 0 && (
                     <div className="text-sm text-[var(--text-muted)]">no agents available</div>
@@ -247,7 +298,7 @@ export function AddModal() {
                     </button>
                   ))}
                 </div>
-                
+
                 {/* Inline agent creation */}
                 {!showInlineAgent ? (
                   <button
@@ -283,7 +334,7 @@ export function AddModal() {
                         </button>
                       ))}
                     </div>
-                    
+
                     <div className="flex gap-2">
                       <button
                         onClick={() => setShowInlineAgent(false)}
@@ -293,16 +344,16 @@ export function AddModal() {
                       </button>
                       <button
                         onClick={handleCreateInlineAgent}
-                        disabled={!inlineAgent.id || !inlineAgent.name}
+                        disabled={!inlineAgent.id || !inlineAgent.name || isLoading}
                         className="text-xs text-[var(--accent)] disabled:opacity-50"
                       >
-                        create
+                        {isLoading ? 'creating...' : 'create'}
                       </button>
                     </div>
                   </div>
                 )}
               </div>
-              
+
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   onClick={closeModal}
@@ -312,10 +363,10 @@ export function AddModal() {
                 </button>
                 <button
                   onClick={handleCreateTeam}
-                  disabled={!teamForm.id || !teamForm.name}
+                  disabled={!teamForm.id || !teamForm.name || isLoading}
                   className="px-4 py-2 text-sm bg-[var(--accent)] text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  create
+                  {isLoading ? 'creating...' : 'create'}
                 </button>
               </div>
             </div>
