@@ -1,8 +1,21 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useClawStore } from '@/stores/useClawStore';
 import { getAgents, getTeams, createEventSource } from '@/lib/api';
+
+// Demo data for when server is not available
+const DEMO_AGENTS = [
+  { id: 'claude', name: 'claude', provider: 'anthropic' as const, model: 'claude-sonnet-4-5', status: 'idle' as const },
+  { id: 'kimi', name: 'kimi', provider: 'kimi' as const, model: 'kimi-k2.5', status: 'idle' as const },
+  { id: 'writer', name: 'writer', provider: 'openai' as const, model: 'gpt-4o', status: 'idle' as const },
+  { id: 'guru', name: 'guru', provider: 'opencode' as const, model: 'opencode-1.5', status: 'idle' as const },
+];
+
+const DEMO_TEAMS = [
+  { id: 'backend', name: 'backend', agentIds: ['claude', 'kimi'] },
+  { id: 'security', name: 'security', agentIds: ['guru'] },
+];
 
 export function useSSE() {
   const { 
@@ -18,22 +31,32 @@ export function useSSE() {
   
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [useDemo, setUseDemo] = useState(false);
   
   useEffect(() => {
+    // If we've tried 3 times and failed, use demo data
+    if (reconnectAttempts >= 3 && !useDemo) {
+      console.log('Server not available, using demo data');
+      setUseDemo(true);
+      setAgents(DEMO_AGENTS);
+      setTeams(DEMO_TEAMS);
+      return;
+    }
+
+    if (useDemo) return;
+
     let isActive = true;
     
     const connect = async () => {
       try {
         // Load initial data
-        console.log('Connecting to TinyClaw server...');
         const [agents, teams] = await Promise.all([
           getAgents(),
           getTeams(),
         ]);
         
         if (!isActive) return;
-        
-        console.log('Loaded agents:', agents.length, 'teams:', teams.length);
         
         // Transform API data to store format
         setAgents(agents.map(a => ({
@@ -50,14 +73,12 @@ export function useSSE() {
           agentIds: t.agents,
         })));
         
+        setReconnectAttempts(0);
+        
       } catch (error) {
         console.error('Failed to load initial data:', error);
-        setConnected(false);
-        // Retry after 3 seconds
-        reconnectTimeoutRef.current = setTimeout(() => {
-          if (isActive) connect();
-        }, 3000);
-        return;
+        setReconnectAttempts(prev => prev + 1);
+        // Will retry via SSE reconnection
       }
       
       // Connect to SSE
@@ -68,6 +89,7 @@ export function useSSE() {
         es.onopen = () => {
           console.log('SSE connected');
           setConnected(true);
+          setReconnectAttempts(0);
         };
         
         es.onmessage = (event) => {
@@ -79,22 +101,20 @@ export function useSSE() {
           }
         };
         
-        es.onerror = (err) => {
-          console.log('SSE error:', err);
+        es.onerror = () => {
+          console.log('SSE error, will reconnect...');
           setConnected(false);
           es.close();
+          setReconnectAttempts(prev => prev + 1);
           
           // Reconnect after 3 seconds
           reconnectTimeoutRef.current = setTimeout(() => {
             if (isActive) connect();
           }, 3000);
         };
-      } catch (sseError) {
-        console.error('Failed to create SSE connection:', sseError);
-        setConnected(false);
-        reconnectTimeoutRef.current = setTimeout(() => {
-          if (isActive) connect();
-        }, 3000);
+      } catch (error) {
+        console.error('Failed to create SSE connection:', error);
+        setReconnectAttempts(prev => prev + 1);
       }
     };
     
@@ -162,7 +182,7 @@ export function useSSE() {
         esRef.current.close();
       }
     };
-  }, [setAgents, setTeams, setConnected, addMessage, addNotification, updateAgentTask, addAgent, addTeam]);
+  }, [setAgents, setTeams, setConnected, addMessage, addNotification, updateAgentTask, addAgent, addTeam, reconnectAttempts, useDemo]);
   
-  return { connected: !!esRef.current };
+  return { connected: !!esRef.current && !useDemo, useDemo };
 }
