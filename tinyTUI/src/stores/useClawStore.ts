@@ -49,6 +49,7 @@ interface ClawState {
   closeModal: () => void;
   setModalTab: (tab: 'agent' | 'team') => void;
   updateAgentTask: (agentId: string, task: string | undefined) => void;
+  setAgentTyping: (agentId: string, typing: boolean) => void;
 }
 
 export const useClawStore = create<ClawState>((set, get) => ({
@@ -156,6 +157,12 @@ export const useClawStore = create<ClawState>((set, get) => ({
       a.id === agentId
         ? { ...a, currentTask: task, status: task ? 'working' : 'idle' }
         : a
+    ),
+  })),
+
+  setAgentTyping: (agentId, typing) => set((state) => ({
+    agents: state.agents.map(a =>
+      a.id === agentId ? { ...a, typing } : a
     ),
   })),
 }));

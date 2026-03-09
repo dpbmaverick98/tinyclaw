@@ -5,6 +5,7 @@ export interface Agent {
   model: string;
   status: 'idle' | 'working' | 'error';
   currentTask?: string;
+  typing?: boolean;
 }
 
 export interface Team {
