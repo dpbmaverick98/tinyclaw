@@ -120,6 +120,11 @@ export async function getResponses(limit = 20): Promise<ResponseData[]> {
   return fetchAPI(`/api/responses?limit=${limit}`);
 }
 
+// Logs - for agent activity transcript
+export async function getLogs(limit = 100): Promise<{ lines: string[] }> {
+  return fetchAPI(`/api/logs?limit=${limit}`);
+}
+
 // SSE - correct endpoint with event types
 export function subscribeToEvents(
   onEvent: (event: EventData) => void,

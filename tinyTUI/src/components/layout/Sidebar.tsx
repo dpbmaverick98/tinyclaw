@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useClawStore } from '@/stores/useClawStore';
-import { deleteAgent, deleteTeam } from '@/lib/api';
+import { deleteAgent, deleteTeam, getLogs } from '@/lib/api';
 
 export function Sidebar() {
   const { 
@@ -17,12 +17,29 @@ export function Sidebar() {
   } = useClawStore();
   
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
   
   const standaloneAgents = agents.filter(a => 
     !teams.some(t => t.agentIds.includes(a.id))
   );
   
   const workingAgents = agents.filter(a => a.status === 'working');
+  
+  // Poll logs every 3 seconds
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const data = await getLogs(50);
+        setLogs(data.lines);
+      } catch {
+        // Silently fail
+      }
+    };
+    
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 3000);
+    return () => clearInterval(interval);
+  }, []);
   
   const handleDeleteAgent = async (agentId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -138,7 +155,7 @@ export function Sidebar() {
       </div>
       
       {/* Active Tasks Section */}
-      <div className="border-b border-[var(--border-color)] flex-1">
+      <div className="border-b border-[var(--border-color)]">
         <button
           onClick={() => toggleSidebar('active')}
           className="w-full px-3 py-2 text-left text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors text-xs uppercase tracking-wide"
@@ -164,6 +181,29 @@ export function Sidebar() {
                   {agent.currentTask}
                 </div>
               </button>
+            ))}
+          </div>
+        )}
+      </div>
+      
+      {/* Logs Section */}
+      <div className="border-b border-[var(--border-color)] flex-1 flex flex-col min-h-0">
+        <button
+          onClick={() => toggleSidebar('logs')}
+          className="w-full px-3 py-2 text-left text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors text-xs uppercase tracking-wide"
+        >
+          {sidebarExpanded.logs ? '-' : '+'} logs
+        </button>
+        
+        {sidebarExpanded.logs && (
+          <div className="flex-1 overflow-y-auto px-3 py-2 font-mono text-[10px]">
+            {logs.length === 0 && (
+              <div className="text-[var(--text-muted)]">no logs</div>
+            )}
+            {logs.map((line, i) => (
+              <div key={i} className="text-[var(--text-secondary)] truncate hover:text-[var(--text-primary)]">
+                {line}
+              </div>
             ))}
           </div>
         )}
