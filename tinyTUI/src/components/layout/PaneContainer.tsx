@@ -25,10 +25,12 @@ export function PaneContainer() {
   const [dragging, setDragging] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Get team name for an agent (if they're a team leader)
-  const getAgentTeamName = useCallback((agentId: string): string | null => {
-    const team = teams.find(t => t.agentIds[0] === agentId);
-    return team?.name || null;
+  // Get team info for an agent
+  const getAgentTeamInfo = useCallback((agentId: string): { name: string; role: 'leader' | 'teammate' | null } => {
+    const team = teams.find(t => t.agentIds.includes(agentId));
+    if (!team) return { name: '', role: null };
+    const isLeader = team.agentIds[0] === agentId;
+    return { name: team.name, role: isLeader ? 'leader' : 'teammate' };
   }, [teams]);
 
   // Initialize layouts for new panes
@@ -140,7 +142,7 @@ export function PaneContainer() {
           const agent = agents.find(a => a.id === pane.agentId);
           const isActive = pane.id === activePaneId;
           const hasNewMessage = pane.hasNewMessage;
-          const teamName = agent ? getAgentTeamName(agent.id) : null;
+          const teamInfo = agent ? getAgentTeamInfo(agent.id) : { name: '', role: null };
           
           return (
             <div
@@ -174,11 +176,11 @@ export function PaneContainer() {
                   {agent && (
                     <span className="text-xs text-[var(--text-secondary)] truncate">
                       {agent.id}: {agent.name}
-                      {teamName && (
-                        <span className="text-[var(--text-muted)]"> ({teamName})</span>
+                      {teamInfo.role && (
+                        <span className="text-[var(--text-muted)]"> {teamInfo.name}:{teamInfo.role}</span>
                       )}
                       {agent.typing && (
-                        <span className="ml-2 text-[var(--accent)] animate-pulse">...</span>
+                        <span className="ml-2 text-[var(--accent)] font-bold animate-pulse">●●●</span>
                       )}
                     </span>
                   )}

@@ -93,7 +93,12 @@ export function Sidebar() {
                   onClick={() => openPane(agent.id)}
                   className="flex-1 text-left text-[var(--text-primary)] text-sm"
                 >
-                  {'>'} {agent.name}
+                  <span className="flex items-center gap-2">
+                    {'>'} {agent.name}
+                    {agent.typing && (
+                      <span className="text-[var(--accent)] font-bold animate-pulse">●●●</span>
+                    )}
+                  </span>
                 </button>
                 <button
                   onClick={(e) => handleDeleteAgent(agent.id, e)}
@@ -144,7 +149,12 @@ export function Sidebar() {
                       onClick={() => openPane(agentId)}
                       className="w-full px-9 py-1 text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors text-sm"
                     >
-                      {'>'} {agent.name}
+                      <span className="flex items-center gap-2">
+                        {'>'} {agent.name}
+                        {agent.typing && (
+                          <span className="text-[var(--accent)] font-bold animate-pulse">●●●</span>
+                        )}
+                      </span>
                     </button>
                   );
                 })}
@@ -175,8 +185,14 @@ export function Sidebar() {
                 key={agent.id}
                 onClick={() => openPane(agent.id)}
                 className="w-full px-6 py-1 text-left hover:bg-[var(--bg-tertiary)] transition-colors text-sm"
-              >
-                <div className="text-[var(--text-primary)]">{agent.name}</div>
+              >n                <div className="text-[var(--text-primary)]">
+                  <span className="flex items-center gap-2">
+                    {'>'} {agent.name}
+                    {agent.typing && (
+                      <span className="text-[var(--accent)] font-bold animate-pulse">●●●</span>
+                    )}
+                  </span>
+                </div>
                 <div className="text-[var(--text-muted)] text-xs truncate">
                   {agent.currentTask}
                 </div>
