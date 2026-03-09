@@ -3,6 +3,7 @@
 import { useRef, useEffect } from 'react';
 import { useClawStore } from '@/stores/useClawStore';
 import { ChatPane as ChatPaneType } from '@/types';
+import { sendMessage } from '@/lib/api';
 
 interface ChatPaneProps {
   pane: ChatPaneType;
@@ -14,46 +15,53 @@ export function ChatPane({ pane, isActive, onActivate }: ChatPaneProps) {
   const { agents, closePane, updatePaneInput, addMessage, markPaneRead } = useClawStore();
   const agent = agents.find(a => a.id === pane.agentId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [pane.messages]);
-  
+
   useEffect(() => {
     if (isActive && pane.hasNewMessage) {
       markPaneRead(pane.id);
     }
   }, [isActive, pane.hasNewMessage, pane.id, markPaneRead]);
-  
+
   if (!agent) return null;
-  
-  const handleSubmit = (e: React.FormEvent) => {
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pane.input.trim()) return;
-    
-    // Add user message
+
+    const content = pane.input;
+
+    // Add user message locally
     addMessage(pane.id, {
       id: `msg-${Date.now()}`,
       role: 'user',
-      content: pane.input,
+      content: content,
       timestamp: Date.now(),
     });
-    
+
     updatePaneInput(pane.id, '');
-    
-    // Simulate agent response (for demo)
-    setTimeout(() => {
+
+    // Send to server
+    try {
+      await sendMessage(agent.id, content);
+      // Response will come via SSE
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      // Show error in chat
       addMessage(pane.id, {
-        id: `msg-${Date.now() + 1}`,
+        id: `msg-${Date.now()}-error`,
         role: 'agent',
-        content: `response from ${agent.name}...`,
+        content: 'error: failed to send message',
         timestamp: Date.now(),
       });
-    }, 1000);
+    }
   };
-  
+
   return (
-    <div 
+    <div
       onClick={onActivate}
       className={`
         bg-[var(--bg-primary)] flex flex-col min-h-0
@@ -76,7 +84,7 @@ export function ChatPane({ pane, isActive, onActivate }: ChatPaneProps) {
           x
         </button>
       </div>
-      
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
         {pane.messages.length === 0 && (
@@ -97,7 +105,7 @@ export function ChatPane({ pane, isActive, onActivate }: ChatPaneProps) {
         ))}
         <div ref={messagesEndRef} />
       </div>
-      
+
       {/* Input */}
       <form onSubmit={handleSubmit} className="border-t border-[var(--border-color)] p-2">
         <div className="flex items-center gap-2">
