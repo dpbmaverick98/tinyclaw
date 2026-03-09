@@ -1,111 +1,153 @@
 import { create } from 'zustand';
-import { Agent, Team, QueueStatus } from '@/types';
+import { Agent, Team, ChatPane, Notification, Message } from '@/types';
 
 interface ClawState {
   // Data
   agents: Agent[];
   teams: Team[];
-  queueStatus: QueueStatus | null;
   
-  // UI State
-  selectedAgentId: string | null;
-  viewMode: 'grid' | 'list';
-  theme: 'light' | 'dark';
-  filterProvider: string | null;
-  filterStatus: string | null;
-  filterTeam: string | null;
-  searchQuery: string;
+  // Panes
+  panes: ChatPane[];
+  activePaneId: string | null;
+  
+  // UI
+  sidebarExpanded: {
+    agents: boolean;
+    teams: boolean;
+    active: boolean;
+  };
+  
+  // Notifications
+  notifications: Notification[];
+  showNotifications: boolean;
+  
+  // Modal
+  modalOpen: boolean;
+  modalTab: 'agent' | 'team';
   
   // Actions
-  setAgents: (agents: Agent[]) => void;
-  setTeams: (teams: Team[]) => void;
-  setQueueStatus: (status: QueueStatus) => void;
-  updateAgentStatus: (agentId: string, status: Agent['status']) => void;
-  incrementAgentActivity: (agentId: string) => void;
-  
-  // UI Actions
-  setSelectedAgentId: (id: string | null) => void;
-  setViewMode: (mode: 'grid' | 'list') => void;
-  setTheme: (theme: 'light' | 'dark') => void;
-  toggleTheme: () => void;
-  setFilterProvider: (provider: string | null) => void;
-  setFilterStatus: (status: string | null) => void;
-  setFilterTeam: (team: string | null) => void;
-  setSearchQuery: (query: string) => void;
+  addAgent: (agent: Agent) => void;
+  addTeam: (team: Team) => void;
+  openPane: (agentId: string) => void;
+  closePane: (paneId: string) => void;
+  setActivePane: (paneId: string) => void;
+  updatePaneInput: (paneId: string, input: string) => void;
+  addMessage: (paneId: string, message: Message) => void;
+  markPaneRead: (paneId: string) => void;
+  toggleSidebar: (section: 'agents' | 'teams' | 'active') => void;
+  addNotification: (notification: Notification) => void;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
+  setShowNotifications: (show: boolean) => void;
+  openModal: (tab?: 'agent' | 'team') => void;
+  closeModal: () => void;
+  setModalTab: (tab: 'agent' | 'team') => void;
+  updateAgentTask: (agentId: string, task: string | undefined) => void;
 }
 
-export const useClawStore = create<ClawState>((set) => ({
-  // Initial state
-  agents: [],
-  teams: [],
-  queueStatus: null,
-  selectedAgentId: null,
-  viewMode: 'grid',
-  theme: 'light',
-  filterProvider: null,
-  filterStatus: null,
-  filterTeam: null,
-  searchQuery: '',
+const DEMO_AGENTS: Agent[] = [
+  { id: 'claude', name: 'claude', provider: 'anthropic', model: 'claude-sonnet-4-5', status: 'idle' },
+  { id: 'kimi', name: 'kimi', provider: 'kimi', model: 'kimi-k2.5', status: 'idle' },
+  { id: 'writer', name: 'writer', provider: 'openai', model: 'gpt-4o', status: 'idle' },
+  { id: 'guru', name: 'guru', provider: 'opencode', model: 'opencode-1.5', status: 'idle' },
+];
 
-  // Data actions
-  setAgents: (agents) => set({ agents }),
-  setTeams: (teams) => set({ teams }),
-  setQueueStatus: (queueStatus) => set({ queueStatus }),
+const DEMO_TEAMS: Team[] = [
+  { id: 'backend', name: 'backend', agentIds: ['claude', 'kimi'] },
+  { id: 'security', name: 'security', agentIds: ['guru'] },
+];
 
-  updateAgentStatus: (agentId, status) => set((state) => ({
-    agents: state.agents.map((a) =>
-      a.id === agentId ? { ...a, status, lastActivity: Date.now() } : a
+export const useClawStore = create<ClawState>((set, get) => ({
+  agents: DEMO_AGENTS,
+  teams: DEMO_TEAMS,
+  panes: [],
+  activePaneId: null,
+  sidebarExpanded: { agents: true, teams: true, active: true },
+  notifications: [],
+  showNotifications: false,
+  modalOpen: false,
+  modalTab: 'agent',
+  
+  addAgent: (agent) => set((state) => ({ agents: [...state.agents, agent] })),
+  
+  addTeam: (team) => set((state) => ({ teams: [...state.teams, team] })),
+  
+  openPane: (agentId) => {
+    const existing = get().panes.find(p => p.agentId === agentId);
+    if (existing) {
+      set({ activePaneId: existing.id });
+      return;
+    }
+    const newPane: ChatPane = {
+      id: `pane-${Date.now()}`,
+      agentId,
+      messages: [],
+      hasNewMessage: false,
+      input: '',
+    };
+    set((state) => ({
+      panes: [...state.panes, newPane],
+      activePaneId: newPane.id,
+    }));
+  },
+  
+  closePane: (paneId) => set((state) => {
+    const newPanes = state.panes.filter(p => p.id !== paneId);
+    return {
+      panes: newPanes,
+      activePaneId: state.activePaneId === paneId 
+        ? (newPanes.length > 0 ? newPanes[newPanes.length - 1].id : null)
+        : state.activePaneId,
+    };
+  }),
+  
+  setActivePane: (paneId) => set({ activePaneId: paneId }),
+  
+  updatePaneInput: (paneId, input) => set((state) => ({
+    panes: state.panes.map(p => p.id === paneId ? { ...p, input } : p),
+  })),
+  
+  addMessage: (paneId, message) => set((state) => ({
+    panes: state.panes.map(p => 
+      p.id === paneId 
+        ? { ...p, messages: [...p.messages, message], hasNewMessage: message.role === 'agent' }
+        : p
     ),
   })),
-
-  incrementAgentActivity: (agentId) => set((state) => ({
-    agents: state.agents.map((a) =>
-      a.id === agentId
-        ? { ...a, messageCount: (a.messageCount || 0) + 1, lastActivity: Date.now() }
+  
+  markPaneRead: (paneId) => set((state) => ({
+    panes: state.panes.map(p => p.id === paneId ? { ...p, hasNewMessage: false } : p),
+  })),
+  
+  toggleSidebar: (section) => set((state) => ({
+    sidebarExpanded: { ...state.sidebarExpanded, [section]: !state.sidebarExpanded[section] },
+  })),
+  
+  addNotification: (notification) => set((state) => ({
+    notifications: [notification, ...state.notifications],
+  })),
+  
+  markNotificationRead: (id) => set((state) => ({
+    notifications: state.notifications.map(n => n.id === id ? { ...n, read: true } : n),
+  })),
+  
+  markAllNotificationsRead: () => set((state) => ({
+    notifications: state.notifications.map(n => ({ ...n, read: true })),
+  })),
+  
+  setShowNotifications: (show) => set({ showNotifications: show }),
+  
+  openModal: (tab = 'agent') => set({ modalOpen: true, modalTab: tab }),
+  
+  closeModal: () => set({ modalOpen: false }),
+  
+  setModalTab: (tab) => set({ modalTab: tab }),
+  
+  updateAgentTask: (agentId, task) => set((state) => ({
+    agents: state.agents.map(a => 
+      a.id === agentId 
+        ? { ...a, currentTask: task, status: task ? 'working' : 'idle' }
         : a
     ),
   })),
-
-  // UI actions
-  setSelectedAgentId: (id) => set({ selectedAgentId: id }),
-  setViewMode: (mode) => set({ viewMode: mode }),
-  setTheme: (theme) => set({ theme }),
-  toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
-  setFilterProvider: (provider) => set({ filterProvider: provider }),
-  setFilterStatus: (status) => set({ filterStatus: status }),
-  setFilterTeam: (team) => set({ filterTeam: team }),
-  setSearchQuery: (query) => set({ searchQuery: query }),
 }));
-
-// Selector hooks for computed values
-export function useFilteredAgents() {
-  return useClawStore((state) => {
-    const { agents, filterProvider, filterStatus, filterTeam, searchQuery } = state;
-    
-    return agents.filter((agent) => {
-      if (filterProvider && agent.config.provider !== filterProvider) return false;
-      if (filterStatus && agent.status !== filterStatus) return false;
-      if (filterTeam && agent.teamId !== filterTeam) return false;
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        const matchesId = agent.id.toLowerCase().includes(query);
-        const matchesName = agent.config.name.toLowerCase().includes(query);
-        const matchesModel = agent.config.model.toLowerCase().includes(query);
-        if (!matchesId && !matchesName && !matchesModel) return false;
-      }
-      return true;
-    });
-  });
-}
-
-export function useAgentById(id: string | null) {
-  return useClawStore((state) => 
-    id ? state.agents.find((a) => a.id === id) : undefined
-  );
-}
-
-export function useTeamById(id: string | null) {
-  return useClawStore((state) => 
-    id ? state.teams.find((t) => t.id === id) : undefined
-  );
-}

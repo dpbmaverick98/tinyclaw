@@ -1,72 +1,40 @@
-export type Provider = 'anthropic' | 'openai' | 'opencode' | 'kimi' | 'minimax';
-
-export interface AgentConfig {
+export interface Agent {
+  id: string;
   name: string;
   provider: Provider;
   model: string;
-  working_directory: string;
-  system_prompt?: string;
-  prompt_file?: string;
-}
-
-export interface TeamConfig {
-  name: string;
-  agents: string[];
-  leader_agent: string;
-}
-
-export interface Agent {
-  id: string;
-  config: AgentConfig;
-  status: 'idle' | 'active' | 'error' | 'offline';
-  lastActivity?: number;
-  messageCount?: number;
-  fileCount?: number;
-  teamId?: string;
-  isLeader?: boolean;
+  status: 'idle' | 'working' | 'error';
+  currentTask?: string;
 }
 
 export interface Team {
   id: string;
-  config: TeamConfig;
-  agents: Agent[];
+  name: string;
+  agentIds: string[];
 }
 
-export interface QueueStatus {
-  incoming: number;
-  processing: number;
-  outgoing: number;
-  dead: number;
-  activeConversations: number;
-}
+export type Provider = 'anthropic' | 'openai' | 'opencode' | 'kimi' | 'minimax';
 
-export interface ChatMessage {
+export interface Message {
   id: string;
   role: 'user' | 'agent';
   content: string;
   timestamp: number;
-  agentId?: string;
-  files?: string[];
 }
 
-export interface SSEEvent {
-  type: string;
+export interface ChatPane {
+  id: string;
+  agentId: string;
+  messages: Message[];
+  hasNewMessage: boolean;
+  input: string;
+}
+
+export interface Notification {
+  id: string;
+  agentId: string;
+  agentName: string;
+  preview: string;
   timestamp: number;
-  [key: string]: unknown;
+  read: boolean;
 }
-
-export const PROVIDER_COLORS: Record<Provider, string> = {
-  anthropic: '#D4A574',
-  openai: '#10A37F',
-  opencode: '#6366F1',
-  kimi: '#E53935',
-  minimax: '#F59E0B',
-};
-
-export const PROVIDER_ICONS: Record<Provider, string> = {
-  anthropic: '◉',
-  openai: '◇',
-  opencode: '○',
-  kimi: '●',
-  minimax: '◆',
-};
