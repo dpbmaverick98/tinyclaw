@@ -17,21 +17,44 @@ export function PaneContainer() {
     );
   }
   
-  // Simple grid layout - can be enhanced with resizable splits later
-  const gridCols = panes.length === 1 ? 'grid-cols-1' : 
-                   panes.length === 2 ? 'grid-cols-2' : 
-                   panes.length <= 4 ? 'grid-cols-2' : 'grid-cols-3';
+  // Simple flex layout with resize handles
+  const isHorizontal = panes.length <= 2;
   
   return (
-    <div className={`flex-1 grid ${gridCols} gap-px bg-[var(--border-color)] overflow-auto`}>
-      {panes.map(pane => (
-        <ChatPane
-          key={pane.id}
-          pane={pane}
-          isActive={pane.id === activePaneId}
-          onActivate={() => setActivePane(pane.id)}
-        />
+    <div className={`flex-1 flex ${isHorizontal ? '' : 'flex-col'} overflow-hidden`}>
+      {panes.map((pane, index) => (
+        <div key={pane.id} className="flex flex-1 min-w-0 min-h-0">
+          <div className="flex-1 min-w-0 min-h-0">
+            <ChatPane
+              pane={pane}
+              isActive={pane.id === activePaneId}
+              onActivate={() => setActivePane(pane.id)}
+            />
+          </div>
+          {index < panes.length - 1 && (
+            <ResizeHandle direction={isHorizontal ? 'vertical' : 'horizontal'} />
+          )}
+        </div>
       ))}
     </div>
+  );
+}
+
+function ResizeHandle({ direction }: { direction: 'vertical' | 'horizontal' }) {
+  return (
+    <div
+      className={`
+        ${direction === 'vertical' ? 'w-1 cursor-col-resize' : 'h-1 cursor-row-resize'}
+        bg-[var(--border-color)] hover:bg-[var(--accent)]
+        transition-colors
+      `}
+      onMouseDown={() => {
+        // Resize logic placeholder - will implement full resize later
+        const handleMouseUp = () => {
+          document.removeEventListener('mouseup', handleMouseUp);
+        };
+        document.addEventListener('mouseup', handleMouseUp);
+      }}
+    />
   );
 }
