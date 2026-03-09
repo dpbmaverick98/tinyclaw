@@ -51,6 +51,7 @@ interface ClawState {
   setModalTab: (tab: 'agent' | 'team') => void;
   updateAgentTask: (agentId: string, task: string | undefined) => void;
   setAgentTyping: (agentId: string, typing: boolean) => void;
+  reorderPanes: (paneIds: string[]) => void;
 }
 
 export const useClawStore = create<ClawState>((set, get) => ({
@@ -166,4 +167,11 @@ export const useClawStore = create<ClawState>((set, get) => ({
       a.id === agentId ? { ...a, typing } : a
     ),
   })),
+
+  reorderPanes: (paneIds) => set((state) => {
+    const newPanes = paneIds
+      .map(id => state.panes.find(p => p.id === id))
+      .filter((p): p is ChatPane => p !== undefined);
+    return { panes: newPanes };
+  }),
 }));
