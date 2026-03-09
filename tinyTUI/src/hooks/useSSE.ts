@@ -251,8 +251,46 @@ export function useSSE() {
           break;
         }
 
-        // chain_step_done is NOT handled for messages - it has no responseText
-        // Messages come from response_ready only
+        case 'chain_step_done': {
+          // chain_step_done has responseText for team agents
+          // Use it when responseText is present (team agent responses)
+          const responseText = String(event.responseText || '');
+          if (!responseText) {
+            // No response text - just metadata, skip
+            break;
+          }
+          
+          const agentId = String(event.agentId || event.agent || '');
+          if (!agentId) break;
+          
+          // Clear typing indicator
+          setAgentTyping(agentId, false);
+          
+          // Find pane for this agent
+          const pane = panesRef.current.find(p => p.agentId === agentId);
+          if (!pane) break;
+          
+          console.log('[SSE] Adding message from chain_step_done to pane:', pane.id, 'content:', responseText.slice(0, 50));
+          
+          // Add message to pane
+          addMessage(pane.id, {
+            id: String(event.messageId || `chain-${Date.now()}`),
+            role: 'agent',
+            content: responseText,
+            timestamp: Number(event.timestamp) || Date.now(),
+          });
+          
+          // Add notification
+          addNotification({
+            id: `notif-${event.messageId || Date.now()}`,
+            agentId: agentId,
+            agentName: String(event.agentName || event.agent || ''),
+            preview: responseText.slice(0, 100),
+            timestamp: Date.now(),
+            read: false,
+          });
+          break;
+        }
 
         case 'agent_created':
           addAgent({
