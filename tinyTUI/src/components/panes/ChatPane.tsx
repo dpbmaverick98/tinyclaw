@@ -108,6 +108,14 @@ export function ChatPane({ pane, isActive, onActivate }: ChatPaneProps) {
                     h2: ({ children }) => <h2 className="text-base font-bold my-2">{children}</h2>,
                     h3: ({ children }) => <h3 className="text-sm font-bold my-1">{children}</h3>,
                     a: ({ children, href }) => <a href={href} className="text-[var(--accent)] hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+                    table: ({ children }) => (
+                      <table className="border-collapse border border-[var(--border-color)] my-2 w-full">{children}</table>
+                    ),
+                    thead: ({ children }) => <thead className="bg-[var(--bg-secondary)]">{children}</thead>,
+                    tbody: ({ children }) => <tbody>{children}</tbody>,
+                    tr: ({ children }) => <tr className="border-b border-[var(--border-color)]">{children}</tr>,
+                    th: ({ children }) => <th className="border border-[var(--border-color)] px-2 py-1 text-left font-bold">{children}</th>,
+                    td: ({ children }) => <td className="border border-[var(--border-color)] px-2 py-1">{children}</td>,
                   }}
                 >
                   {msg.content}
