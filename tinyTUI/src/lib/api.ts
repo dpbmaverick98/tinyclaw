@@ -1,16 +1,15 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3777';
 
 export interface AgentConfig {
-  id: string;
   name: string;
   provider: string;
   model: string;
   working_directory?: string;
   system_prompt?: string;
+  prompt_file?: string;
 }
 
 export interface TeamConfig {
-  id: string;
   name: string;
   agents: string[];
   leader_agent?: string;
@@ -24,11 +23,10 @@ export interface ChatMessage {
   agentId?: string;
 }
 
-export interface ServerStatus {
-  status: 'running' | 'stopped';
-  agents: number;
-  teams: number;
-  queue_size: number;
+export interface EventData {
+  type: string;
+  timestamp: number;
+  [key: string]: unknown;
 }
 
 class APIError extends Error {
@@ -40,7 +38,6 @@ class APIError extends Error {
 
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE}${path}`;
-  console.log(`[API] Fetching: ${url}`);
   
   const response = await fetch(url, {
     ...options,
@@ -51,81 +48,91 @@ async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    console.error(`[API] Error ${response.status}: ${error}`);
-    throw new APIError(response.status, error || `HTTP ${response.status}`);
+    const body = await response.json().catch(() => ({ error: response.statusText }));
+    throw new APIError(response.status, body.error || response.statusText);
   }
 
-  const data = await response.json();
-  console.log(`[API] Response from ${path}:`, data);
-  return data;
+  return response.json();
 }
 
-// Agents
-export async function getAgents(): Promise<AgentConfig[]> {
+// Agents - returns Record<id, config>
+export async function getAgents(): Promise<Record<string, AgentConfig>> {
   return fetchAPI('/api/agents');
 }
 
-export async function getAgent(id: string): Promise<AgentConfig> {
-  return fetchAPI(`/api/agents/${id}`);
-}
-
-export async function createAgent(config: Omit<AgentConfig, 'id'> & { id: string }): Promise<AgentConfig> {
-  return fetchAPI('/api/agents', {
-    method: 'POST',
-    body: JSON.stringify(config),
+export async function saveAgent(
+  id: string,
+  agent: AgentConfig
+): Promise<{ ok: boolean; agent: AgentConfig }> {
+  return fetchAPI(`/api/agents/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(agent),
   });
 }
 
-export async function deleteAgent(id: string): Promise<void> {
-  await fetchAPI(`/api/agents/${id}`, { method: 'DELETE' });
+export async function deleteAgent(id: string): Promise<{ ok: boolean }> {
+  return fetchAPI(`/api/agents/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-// Teams
-export async function getTeams(): Promise<TeamConfig[]> {
+// Teams - returns Record<id, config>
+export async function getTeams(): Promise<Record<string, TeamConfig>> {
   return fetchAPI('/api/teams');
 }
 
-export async function getTeam(id: string): Promise<TeamConfig> {
-  return fetchAPI(`/api/teams/${id}`);
-}
-
-export async function createTeam(config: Omit<TeamConfig, 'id'> & { id: string }): Promise<TeamConfig> {
-  return fetchAPI('/api/teams', {
-    method: 'POST',
-    body: JSON.stringify(config),
+export async function saveTeam(
+  id: string,
+  team: TeamConfig
+): Promise<{ ok: boolean; team: TeamConfig }> {
+  return fetchAPI(`/api/teams/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(team),
   });
 }
 
-export async function deleteTeam(id: string): Promise<void> {
-  await fetchAPI(`/api/teams/${id}`, { method: 'DELETE' });
+export async function deleteTeam(id: string): Promise<{ ok: boolean }> {
+  return fetchAPI(`/api/teams/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-// Chat
-export async function sendMessage(agentId: string, content: string): Promise<{ messageId: string; status: string }> {
-  return fetchAPI('/api/chat', {
+// Chat - correct endpoint
+export async function sendMessage(payload: {
+  message: string;
+  agent?: string;
+  sender?: string;
+  channel?: string;
+}): Promise<{ ok: boolean; messageId: string }> {
+  return fetchAPI('/api/message', {
     method: 'POST',
-    body: JSON.stringify({ agentId, message: content }),
+    body: JSON.stringify(payload),
   });
 }
 
-export async function sendMessageToTeam(teamId: string, content: string): Promise<{ messageId: string; status: string }> {
-  return fetchAPI('/api/chat', {
-    method: 'POST',
-    body: JSON.stringify({ teamId, message: content }),
-  });
-}
+// SSE - correct endpoint with event types
+export function subscribeToEvents(
+  onEvent: (event: EventData) => void,
+  onError?: (err: Event) => void
+): () => void {
+  const es = new EventSource(`${API_BASE}/api/events/stream`);
 
-export async function getChatHistory(agentId: string): Promise<ChatMessage[]> {
-  return fetchAPI(`/api/chat/${agentId}`);
-}
+  const handler = (e: MessageEvent) => {
+    try { 
+      onEvent(JSON.parse(e.data)); 
+    } catch { 
+      /* ignore parse errors */ 
+    }
+  };
 
-// Status
-export async function getStatus(): Promise<ServerStatus> {
-  return fetchAPI('/api/status');
-}
+  // Listen to all known event types
+  const eventTypes = [
+    'message_received', 'agent_routed', 'chain_step_start', 'chain_step_done',
+    'chain_handoff', 'team_chain_start', 'team_chain_end', 'response_ready',
+    'processor_start', 'message_enqueued',
+  ];
+  
+  for (const type of eventTypes) {
+    es.addEventListener(type, handler);
+  }
 
-// SSE Events
-export function createEventSource(): EventSource {
-  return new EventSource(`${API_BASE}/api/events`);
+  if (onError) es.onerror = onError;
+
+  return () => es.close();
 }

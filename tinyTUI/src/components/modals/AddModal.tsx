@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useClawStore } from '@/stores/useClawStore';
 import { Provider } from '@/types';
-import { createAgent, createTeam } from '@/lib/api';
+import { saveAgent, saveTeam } from '@/lib/api';
 
 const PROVIDERS: Provider[] = ['anthropic', 'openai', 'opencode', 'kimi', 'minimax'];
 
@@ -52,18 +52,19 @@ export function AddModal() {
     setError(null);
 
     try {
-      const newAgent = await createAgent({
+      await saveAgent(agentForm.id, {
+        name: agentForm.name,
+        provider: agentForm.provider,
+        model: agentForm.model || DEFAULT_MODELS[agentForm.provider],
+        working_directory: `~/.claw/agents/${agentForm.id}`,
+      });
+
+      // Agent will be added via SSE event, but add locally too for immediate feedback
+      addAgent({
         id: agentForm.id,
         name: agentForm.name,
         provider: agentForm.provider,
         model: agentForm.model || DEFAULT_MODELS[agentForm.provider],
-      });
-
-      addAgent({
-        id: newAgent.id,
-        name: newAgent.name,
-        provider: newAgent.provider as Provider,
-        model: newAgent.model,
         status: 'idle',
       });
 
@@ -82,16 +83,17 @@ export function AddModal() {
     setError(null);
 
     try {
-      const newTeam = await createTeam({
-        id: teamForm.id,
+      await saveTeam(teamForm.id, {
         name: teamForm.name,
         agents: teamForm.agentIds,
+        leader_agent: teamForm.agentIds[0] || '',
       });
 
+      // Team will be added via SSE event, but add locally too for immediate feedback
       addTeam({
-        id: newTeam.id,
-        name: newTeam.name,
-        agentIds: newTeam.agents,
+        id: teamForm.id,
+        name: teamForm.name,
+        agentIds: teamForm.agentIds,
       });
 
       setTeamForm({ id: '', name: '', agentIds: [] });
@@ -109,22 +111,23 @@ export function AddModal() {
     setError(null);
 
     try {
-      const newAgent = await createAgent({
+      await saveAgent(inlineAgent.id, {
+        name: inlineAgent.name,
+        provider: inlineAgent.provider,
+        model: DEFAULT_MODELS[inlineAgent.provider],
+        working_directory: `~/.claw/agents/${inlineAgent.id}`,
+      });
+
+      // Agent will be added via SSE event, but add locally too for immediate feedback
+      addAgent({
         id: inlineAgent.id,
         name: inlineAgent.name,
         provider: inlineAgent.provider,
         model: DEFAULT_MODELS[inlineAgent.provider],
-      });
-
-      addAgent({
-        id: newAgent.id,
-        name: newAgent.name,
-        provider: newAgent.provider as Provider,
-        model: newAgent.model,
         status: 'idle',
       });
 
-      setTeamForm(prev => ({ ...prev, agentIds: [...prev.agentIds, newAgent.id] }));
+      setTeamForm(prev => ({ ...prev, agentIds: [...prev.agentIds, inlineAgent.id] }));
       setInlineAgent({ id: '', name: '', provider: 'anthropic' });
       setShowInlineAgent(false);
     } catch (err) {
