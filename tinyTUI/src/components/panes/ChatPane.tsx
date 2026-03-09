@@ -4,6 +4,7 @@ import { useRef, useEffect } from 'react';
 import { useClawStore } from '@/stores/useClawStore';
 import { ChatPane as ChatPaneType } from '@/types';
 import { sendMessage } from '@/lib/api';
+import ReactMarkdown from 'react-markdown';
 
 interface ChatPaneProps {
   pane: ChatPaneType;
@@ -73,7 +74,7 @@ export function ChatPane({ pane, isActive, onActivate }: ChatPaneProps) {
       `}
     >
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
+      <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
         {pane.messages.length === 0 && (
           <div className="text-[var(--text-muted)] text-sm">
             start a conversation with {agent.name}
@@ -87,7 +88,32 @@ export function ChatPane({ pane, isActive, onActivate }: ChatPaneProps) {
               {msg.role === 'user' ? 'you' : agent.name}:
             </span>
             {' '}
-            <span className="text-[var(--text-primary)]">{msg.content}</span>
+            {msg.role === 'user' ? (
+              <span className="text-[var(--text-primary)]">{msg.content}</span>
+            ) : (
+              <div className="text-[var(--text-primary)] prose prose-invert prose-sm max-w-none">
+                <ReactMarkdown
+                  components={{
+                    pre: ({ children }) => (
+                      <pre className="bg-[var(--bg-secondary)] p-2 rounded overflow-x-auto my-2">{children}</pre>
+                    ),
+                    code: ({ children }) => (
+                      <code className="bg-[var(--bg-secondary)] px-1 rounded text-xs">{children}</code>
+                    ),
+                    p: ({ children }) => <p className="my-1">{children}</p>,
+                    ul: ({ children }) => <ul className="list-disc ml-4 my-1">{children}</ul>,
+                    ol: ({ children }) => <ol className="list-decimal ml-4 my-1">{children}</ol>,
+                    li: ({ children }) => <li className="my-0.5">{children}</li>,
+                    h1: ({ children }) => <h1 className="text-lg font-bold my-2">{children}</h1>,
+                    h2: ({ children }) => <h2 className="text-base font-bold my-2">{children}</h2>,
+                    h3: ({ children }) => <h3 className="text-sm font-bold my-1">{children}</h3>,
+                    a: ({ children, href }) => <a href={href} className="text-[var(--accent)] hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+                  }}
+                >
+                  {msg.content}
+                </ReactMarkdown>
+              </div>
+            )}
           </div>
         ))}
         <div ref={messagesEndRef} />

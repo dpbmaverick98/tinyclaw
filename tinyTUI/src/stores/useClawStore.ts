@@ -16,6 +16,7 @@ interface ClawState {
     agents: boolean;
     teams: boolean;
     active: boolean;
+    logs: boolean;
   };
 
   // Notifications
@@ -40,7 +41,7 @@ interface ClawState {
   updatePaneInput: (paneId: string, input: string) => void;
   addMessage: (paneId: string, message: Message) => void;
   markPaneRead: (paneId: string) => void;
-  toggleSidebar: (section: 'agents' | 'teams' | 'active') => void;
+  toggleSidebar: (section: 'agents' | 'teams' | 'active' | 'logs') => void;
   addNotification: (notification: Notification) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
@@ -58,7 +59,7 @@ export const useClawStore = create<ClawState>((set, get) => ({
   connected: false,
   panes: [],
   activePaneId: null,
-  sidebarExpanded: { agents: true, teams: true, active: true },
+  sidebarExpanded: { agents: true, teams: true, active: true, logs: false },
   notifications: [],
   showNotifications: false,
   modalOpen: false,
