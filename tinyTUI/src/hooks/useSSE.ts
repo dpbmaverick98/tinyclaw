@@ -22,10 +22,10 @@ function recordToArray<T>(record: Record<string, T>): Array<T & { id: string }> 
   return Object.entries(record).map(([id, data]) => ({ id, ...data }));
 }
 
-// Generate fingerprint for deduplication (NO timestamp - just messageId + agentId + type)
+// Generate fingerprint for deduplication (include timestamp like TinyOffice)
 function getEventFingerprint(event: { type: string; [key: string]: unknown }): string {
   const e = event as Record<string, unknown>;
-  return `${event.type}:${e.messageId ?? e.message_id ?? ''}:${e.agentId ?? e.agent ?? ''}`;
+  return `${event.type}:${e.timestamp ?? ''}:${e.messageId ?? e.message_id ?? ''}:${e.agentId ?? e.agent ?? ''}`;
 }
 
 export function useSSE() {
@@ -128,8 +128,8 @@ export function useSSE() {
       const responses = await getResponses(50);
       
       for (const response of responses) {
-        // Generate fingerprint for deduplication (no timestamp)
-        const fingerprint = `poll:${response.messageId}:${response.agentId}`;
+        // Generate fingerprint for deduplication (include timestamp like TinyOffice)
+        const fingerprint = `poll:${response.timestamp}:${response.messageId}:${response.agentId}`;
         if (isProcessed(fingerprint)) continue;
         
         // Find pane for this agent using ref to avoid stale closure
