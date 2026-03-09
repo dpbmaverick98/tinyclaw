@@ -39,7 +39,10 @@ class APIError extends Error {
 }
 
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const url = `${API_BASE}${path}`;
+  console.log(`[API] Fetching: ${url}`);
+  
+  const response = await fetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -49,10 +52,13 @@ async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const error = await response.text();
+    console.error(`[API] Error ${response.status}: ${error}`);
     throw new APIError(response.status, error || `HTTP ${response.status}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  console.log(`[API] Response from ${path}:`, data);
+  return data;
 }
 
 // Agents

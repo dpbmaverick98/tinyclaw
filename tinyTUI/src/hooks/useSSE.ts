@@ -51,15 +51,24 @@ export function useSSE() {
     const connect = async () => {
       try {
         // Load initial data
-        const [agents, teams] = await Promise.all([
-          getAgents(),
-          getTeams(),
-        ]);
+        console.log('[SSE] Loading agents and teams from server...');
+        const agentsData = await getAgents();
+        const teamsData = await getTeams();
+        
+        console.log('[SSE] Agents response:', agentsData);
+        console.log('[SSE] Teams response:', teamsData);
         
         if (!isActive) return;
         
+        // Handle different response formats
+        const agents = Array.isArray(agentsData) ? agentsData : (agentsData as { agents?: unknown[] }).agents || [];
+        const teams = Array.isArray(teamsData) ? teamsData : (teamsData as { teams?: unknown[] }).teams || [];
+        
+        console.log('[SSE] Parsed agents:', agents);
+        console.log('[SSE] Parsed teams:', teams);
+        
         // Transform API data to store format
-        setAgents(agents.map(a => ({
+        setAgents((agents as { id: string; name: string; provider: string; model: string }[]).map((a) => ({
           id: a.id,
           name: a.name,
           provider: a.provider as 'anthropic' | 'openai' | 'opencode' | 'kimi' | 'minimax',
@@ -67,10 +76,10 @@ export function useSSE() {
           status: 'idle',
         })));
         
-        setTeams(teams.map(t => ({
+        setTeams((teams as { id: string; name: string; agents?: string[]; agentIds?: string[] }[]).map((t) => ({
           id: t.id,
           name: t.name,
-          agentIds: t.agents,
+          agentIds: t.agents || t.agentIds || [],
         })));
         
         setReconnectAttempts(0);
